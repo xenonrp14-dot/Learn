@@ -1,112 +1,95 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  TextInput,
   ScrollView,
-  Animated
+  TextInput,
+  StyleSheet,
+  Animated,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase';
+import { collection, doc, getDoc, getDocs, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'expo-router';
-import { doc, getDoc, collection, query, where, getDocs, deleteDoc, updateDoc } from 'firebase/firestore';
+
+const { width, height } = Dimensions.get('window');
+
+// Animation data
+const NUM_STARS = 20;
+const STAR_DATA = Array.from({ length: NUM_STARS }).map(() => ({
+  top: Math.random() * height,
+  left: Math.random() * width,
+  opacity: 0.2 + Math.random() * 0.4,
+  size: 2 + Math.random() * 3,
+  duration: 15000 + Math.random() * 15000,
+}));
+
+const NUM_PARTICLES = 12;
+const PARTICLE_DATA = Array.from({ length: NUM_PARTICLES }).map(() => ({
+  top: Math.random() * height,
+  left: Math.random() * width,
+  size: 20 + Math.random() * 40,
+  duration: 20000 + Math.random() * 20000,
+}));
+
+const PRIMARY_GREEN = '#1D4A3D';
+const OFF_WHITE = '#FAFAFA';
+const ACCENT_GOLD = '#FBBF24';
+const LIGHT_GREY = '#F0F4F7';
 
 export default function MentorDashboard() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('courses');
-  const tabAnim = useState(new Animated.Value(0))[0];
-  const [courseStats, setCourseStats] = useState({});
-  const [notifications, setNotifications] = useState([]);
-  const [editingCourseId, setEditingCourseId] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [savingEdit, setSavingEdit] = useState(false);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [courses, setCourses] = useState([]);
   const [coursesLoading, setCoursesLoading] = useState(true);
-  const router = useRouter();
+  const [editingCourseId, setEditingCourseId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [courseStats, setCourseStats] = useState({});
+  const [notifications, setNotifications] = useState([]);
 
-  const handleDeleteCourse = async (courseId) => {
-    await deleteDoc(doc(db, 'courses', courseId));
-    setCourses(courses.filter(c => c.id !== courseId));
-  };
+  const contentOpacity = useRef(new Animated.Value(1)).current;
+  const starAnims = useRef(STAR_DATA.map(() => new Animated.Value(Math.random()))).current;
+  const particleAnims = useRef(PARTICLE_DATA.map(() => new Animated.Value(0))).current;
 
-  const handleEditCourse = (course) => {
-    setEditingCourseId(course.id);
-    setEditTitle(course.title);
-    setEditDesc(course.description);
-  };
-
-  const handleSaveEdit = async () => {
-    setSavingEdit(true);
-    await updateDoc(doc(db, 'courses', editingCourseId), {
-      title: editTitle,
-      description: editDesc,
+  // Animate stars
+  useEffect(() => {
+    starAnims.forEach((anim, idx) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: 1, duration: STAR_DATA[idx].duration, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: STAR_DATA[idx].duration, useNativeDriver: true }),
+        ])
+      ).start();
     });
-    setCourses(courses.map(c => c.id === editingCourseId ? { ...c, title: editTitle, description: editDesc } : c));
-    setEditingCourseId(null);
-    setSavingEdit(false);
-  };
+  }, []);
 
-  const handleSignOut = async () => {
-    await signOut(auth);
-    router.replace('/login');
-  };
-
-  const handleAddCourse = () => {
-    router.push('/addCourse');
-  };
+  // Animate particles
+  useEffect(() => {
+    particleAnims.forEach((anim, idx) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: 1, duration: PARTICLE_DATA[idx].duration, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: PARTICLE_DATA[idx].duration, useNativeDriver: true }),
+        ])
+      ).start();
+    });
+  }, []);
 
   useEffect(() => {
-    const fetchStatsAndNotifications = async () => {
-      const stats = {};
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const users = usersSnap.docs.map(doc => doc.data());
-
-      for (const course of courses) {
-        let requestsCount = 0;
-        let enrolledCount = 0;
-        users.forEach(user => {
-          if (Array.isArray(user.enrolled)) {
-            user.enrolled.forEach(enroll => {
-              if (enroll.id === course.id) {
-                if (enroll.status === 'requested') requestsCount++;
-                if (enroll.status === 'enrolled') enrolledCount++;
-              }
-            });
-          }
-        });
-        stats[course.id] = { requests: requestsCount, enrolled: enrolledCount };
-      }
-
-      setCourseStats(stats);
-
-      const notificationsArr = [];
-      for (const course of courses) {
-        if (stats[course.id]?.requests > 0) {
-          notificationsArr.push({
-            id: course.id,
-            text: `You have ${stats[course.id].requests} new request(s) for "${course.title}".`
-          });
-        }
-      }
-      setNotifications(notificationsArr);
-    };
-
-    const fetchStatusAndCourses = async () => {
+    const fetchData = async () => {
       const user = auth.currentUser;
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
+      if (!user) return router.replace('/login');
+
       const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        setStatus(userDoc.data().status);
-      }
+      if (userDoc.exists()) setStatus(userDoc.data().status);
       setLoading(false);
 
       const q = query(collection(db, 'courses'), where('mentorId', '==', user.uid));
@@ -114,185 +97,283 @@ export default function MentorDashboard() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCourses(data);
       setCoursesLoading(false);
+
+      // Calculate notifications
+      const stats = {};
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const users = usersSnap.docs.map(doc => doc.data());
+      const notificationsArr = [];
+      data.forEach(course => {
+        let requests = 0;
+        let enrolled = 0;
+        users.forEach(user => {
+          if (Array.isArray(user.enrolled)) {
+            user.enrolled.forEach(e => {
+              if (e.id === course.id) {
+                if (e.status === 'requested') requests++;
+                if (e.status === 'enrolled') enrolled++;
+              }
+            });
+          }
+        });
+        stats[course.id] = { requests, enrolled };
+        if (requests > 0) notificationsArr.push({ id: course.id, text: `You have ${requests} new request(s) for "${course.title}".` });
+      });
+      setCourseStats(stats);
+      setNotifications(notificationsArr);
     };
 
-    fetchStatusAndCourses();
-    if (courses.length > 0) fetchStatsAndNotifications();
+    fetchData();
   }, []);
 
-  if (loading) {
+  const handleSignOut = async () => {
+    await signOut(auth);
+    router.replace('/login');
+  };
+
+  const handleTabPress = newTab => {
+    if (newTab === activeTab) return;
+    Animated.timing(contentOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setActiveTab(newTab);
+      Animated.timing(contentOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    });
+  };
+
+  const handleEditCourse = course => {
+    setEditingCourseId(course.id);
+    setEditTitle(course.title);
+    setEditDesc(course.description);
+  };
+
+  const handleSaveEdit = async () => {
+    setSavingEdit(true);
+    await updateDoc(doc(db, 'courses', editingCourseId), { title: editTitle, description: editDesc });
+    setCourses(courses.map(c => (c.id === editingCourseId ? { ...c, title: editTitle, description: editDesc } : c)));
+    setEditingCourseId(null);
+    setSavingEdit(false);
+  };
+
+  const handleDeleteCourse = async id => {
+    await deleteDoc(doc(db, 'courses', id));
+    setCourses(courses.filter(c => c.id !== id));
+  };
+
+  const handleAddCourse = () => router.push('/addCourse');
+
+  const starAnimatedStyle = (star, idx) => ({
+    position: 'absolute',
+    top: star.top,
+    left: star.left,
+    width: star.size,
+    height: star.size,
+    borderRadius: star.size / 2,
+    backgroundColor: OFF_WHITE,
+    opacity: starAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0.1, star.opacity] }),
+    transform: [{ translateX: starAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0, Math.random() > 0.5 ? 80 : -80] }) }],
+  });
+
+  const particleAnimatedStyle = (particle, idx) => ({
+    position: 'absolute',
+    top: particle.top,
+    left: particle.left,
+    width: particle.size,
+    height: particle.size,
+    borderRadius: particle.size / 2,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    opacity: particleAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.25] }),
+    transform: [
+      { translateX: particleAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0, Math.random() > 0.5 ? 60 : -60] }) },
+      { translateY: particleAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0, Math.random() > 0.5 ? 60 : -60] }) },
+    ],
+  });
+
+  if (loading)
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0984e3" />
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#27ae60" />
       </View>
     );
-  }
 
   return (
-    <View style={[styles.glassContainer, { flex: 1 }]}>
-      <View style={styles.headerCard}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarInitial}>
-            {auth.currentUser?.displayName?.[0]?.toUpperCase() ||
-              auth.currentUser?.email?.[0]?.toUpperCase() || 'M'}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.avatarEditBtn} onPress={() => router.push('/mentorProfile')}>
-          <Text style={styles.avatarEditText}>Edit</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Mentor Dashboard</Text>
-        <Text style={styles.subtitle}>Welcome, Mentor!</Text>
-      </View>
+    <View style={styles.container}>
+      {STAR_DATA.map((star, idx) => (
+        <Animated.View key={idx} style={starAnimatedStyle(star, idx)} />
+      ))}
+      {PARTICLE_DATA.map((p, idx) => (
+        <Animated.View key={idx} style={particleAnimatedStyle(p, idx)} />
+      ))}
 
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'courses' && styles.tabActive]}
-          onPress={() => {
-            setActiveTab('courses');
-            Animated.spring(tabAnim, { toValue: 0, useNativeDriver: true }).start();
-          }}>
-          <MaterialCommunityIcons name="book-open-variant" size={28} color={activeTab === 'courses' ? '#27ae60' : '#b2bec3'} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'notifications' && styles.tabActive]}
-          onPress={() => {
-            setActiveTab('notifications');
-            Animated.spring(tabAnim, { toValue: 1, useNativeDriver: true }).start();
-          }}>
-          <Ionicons name="notifications" size={28} color={activeTab === 'notifications' ? '#27ae60' : '#b2bec3'} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'analytics' && styles.tabActive]}
-          onPress={() => {
-            setActiveTab('analytics');
-            Animated.spring(tabAnim, { toValue: 2, useNativeDriver: true }).start();
-          }}>
-          <MaterialCommunityIcons name="chart-bar" size={28} color={activeTab === 'analytics' ? '#27ae60' : '#b2bec3'} />
+      <View style={styles.topBar}>
+        <Text style={styles.dashboardTitle}>Mentor Hub</Text>
+        <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/mentorProfile')}>
+          <Ionicons name="person-circle-outline" size={30} color={ACCENT_GOLD} />
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={{ flex: 1, width: '100%' }}>
-        {activeTab === 'courses' && (
-          <View style={styles.glassCard}>
-            <TouchableOpacity style={styles.addButton} onPress={handleAddCourse}>
-              <Text style={styles.addText}>Add Course</Text>
-            </TouchableOpacity>
+      <Animated.View style={{ flex: 1, opacity: contentOpacity, paddingHorizontal: 20 }}>
+        {status !== 'approved' && (
+          <View style={styles.pendingContainer}>
+            <Text style={styles.pendingText}>
+              Your account is pending admin approval. You will be notified once approved.
+            </Text>
+          </View>
+        )}
 
-            {coursesLoading ? (
-              <ActivityIndicator size="large" color="#27ae60" />
-            ) : courses.length === 0 ? (
-              <Text style={styles.subtitle}>No courses found.</Text>
-            ) : (
-              <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 32 }}>
-                {courses.map(item => (
-                  <View key={item.id} style={styles.courseCard}>
-                    {editingCourseId === item.id ? (
-                      <>
-                        <Text style={styles.courseTitle}>Edit Course</Text>
-                        <TextInput style={styles.input} value={editTitle} onChangeText={setEditTitle} placeholder="Title" />
-                        <TextInput style={styles.input} value={editDesc} onChangeText={setEditDesc} placeholder="Description" />
-                        <TouchableOpacity style={styles.saveButton} onPress={handleSaveEdit} disabled={savingEdit}>
-                          <Text style={styles.editText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.cancelButton} onPress={() => setEditingCourseId(null)}>
-                          <Text style={styles.editText}>Cancel</Text>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={styles.courseTitle}>{item.title}</Text>
-                        <Text style={styles.courseDesc}>{item.description}</Text>
-                        <Text style={styles.courseStatus}>{item.status || 'Active'}</Text>
-                        <Text style={styles.analyticsText}>Requests: {courseStats[item.id]?.requests || 0} | Enrolled: {courseStats[item.id]?.enrolled || 0}</Text>
-                        <View style={styles.rowBtns}>
-                          <TouchableOpacity style={styles.editButton} onPress={() => handleEditCourse(item)}>
-                            <Text style={styles.editText}>Edit</Text>
+        {status === 'approved' && (
+          <>
+            <View style={styles.bottomTabs}>
+              <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('courses')}>
+                <MaterialCommunityIcons
+                  name="book-open-variant"
+                  size={28}
+                  color={activeTab === 'courses' ? ACCENT_GOLD : LIGHT_GREY}
+                />
+                <Text style={[styles.tabText, activeTab === 'courses' && styles.tabTextActive]}>Courses</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('notifications')}>
+                <Ionicons
+                  name="notifications"
+                  size={28}
+                  color={activeTab === 'notifications' ? ACCENT_GOLD : LIGHT_GREY}
+                />
+                <Text style={[styles.tabText, activeTab === 'notifications' && styles.tabTextActive]}>
+                  Notifications
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('analytics')}>
+                <MaterialCommunityIcons
+                  name="chart-bar"
+                  size={28}
+                  color={activeTab === 'analytics' ? ACCENT_GOLD : LIGHT_GREY}
+                />
+                <Text style={[styles.tabText, activeTab === 'analytics' && styles.tabTextActive]}>Analytics</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tabItem} onPress={handleSignOut}>
+                <MaterialCommunityIcons name="logout" size={28} color={LIGHT_GREY} />
+                <Text style={styles.tabText}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+
+            {activeTab === 'courses' && (
+              <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+                <TouchableOpacity style={styles.addButton} onPress={handleAddCourse}>
+                  <Text style={styles.addText}>Add New Course</Text>
+                </TouchableOpacity>
+                {coursesLoading ? (
+                  <ActivityIndicator size="large" color={ACCENT_GOLD} />
+                ) : courses.length === 0 ? (
+                  <Text style={styles.emptyText}>No courses found.</Text>
+                ) : (
+                  courses.map(course => (
+                    <View key={course.id} style={styles.courseCard}>
+                      {editingCourseId === course.id ? (
+                        <>
+                          <TextInput
+                            style={styles.input}
+                            value={editTitle}
+                            onChangeText={setEditTitle}
+                            placeholder="Course Title"
+                          />
+                          <TextInput
+                            style={styles.input}
+                            value={editDesc}
+                            onChangeText={setEditDesc}
+                            placeholder="Course Description"
+                          />
+                          <TouchableOpacity style={styles.saveButton} onPress={handleSaveEdit} disabled={savingEdit}>
+                            <Text style={styles.editText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteCourse(item.id)}>
-                            <Text style={styles.deleteText}>Delete</Text>
+                          <TouchableOpacity style={styles.cancelButton} onPress={() => setEditingCourseId(null)}>
+                            <Text style={styles.editText}>Cancel</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.requestButton} onPress={() => router.push(`/courseRequests/${item.id}`)}>
-                            <Text style={styles.requestText}>Requests</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                ))}
+                        </>
+                      ) : (
+                        <>
+                          <Text style={styles.courseTitle}>{course.title}</Text>
+                          <Text style={styles.courseDesc}>{course.description}</Text>
+                          <Text style={styles.analyticsText}>
+                            Requests: {courseStats[course.id]?.requests || 0} | Enrolled:{' '}
+                            {courseStats[course.id]?.enrolled || 0}
+                          </Text>
+                          <View style={styles.rowBtns}>
+                            <TouchableOpacity style={styles.editButton} onPress={() => handleEditCourse(course)}>
+                              <Text style={styles.editText}>Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteCourse(course.id)}>
+                              <Text style={styles.deleteText}>Delete</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.requestButton}
+                              onPress={() => router.push(`/courseRequests/${course.id}`)}
+                            >
+                              <Text style={styles.requestText}>Requests</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  ))
+                )}
               </ScrollView>
             )}
-          </View>
-        )}
 
-        {activeTab === 'notifications' && (
-          <View style={styles.glassCard}>
-            <Text style={styles.sectionTitle}>Notifications</Text>
-            {notifications.length === 0 ? (
-              <Text style={styles.subtitle}>No notifications.</Text>
-            ) : (
-              notifications.map((note, idx) => (
-                <Text key={idx} style={styles.notificationText}>{note.text}</Text>
-              ))
+            {activeTab === 'notifications' && (
+              <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+                {notifications.length === 0 ? (
+                  <Text style={styles.emptyText}>No notifications.</Text>
+                ) : (
+                  notifications.map((n, idx) => <Text key={idx} style={styles.notificationText}>{n.text}</Text>)
+                )}
+              </ScrollView>
             )}
-          </View>
-        )}
 
-        {activeTab === 'analytics' && (
-          <View style={styles.glassCard}>
-            <Text style={styles.sectionTitle}>Analytics</Text>
-            {Object.keys(courseStats).length === 0 ? (
-              <Text style={styles.subtitle}>No analytics data.</Text>
-            ) : (
-              Object.entries(courseStats).map(([cid, stat]) => (
-                <Text key={cid} style={styles.analyticsText}>{`Course ${cid}: Requests ${stat.requests}, Enrolled ${stat.enrolled}`}</Text>
-              ))
+            {activeTab === 'analytics' && (
+              <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+                {Object.keys(courseStats).length === 0 ? (
+                  <Text style={styles.emptyText}>No analytics data.</Text>
+                ) : (
+                  Object.entries(courseStats).map(([cid, stat]) => (
+                    <Text key={cid} style={styles.analyticsText}>
+                      Course {cid}: Requests {stat.requests}, Enrolled {stat.enrolled}
+                    </Text>
+                  ))
+                )}
+              </ScrollView>
             )}
-          </View>
+          </>
         )}
       </Animated.View>
-
-      <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
-        <Text style={styles.signoutText}>Sign Out</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#eaf6ff' },
-  glassContainer: { alignItems: 'center', justifyContent: 'flex-start', backgroundColor: '#eaf6ff' },
-  headerCard: { alignItems: 'center', paddingTop: 40 },
-  avatarCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#74b9ff', justifyContent: 'center', alignItems: 'center' },
-  avatarInitial: { fontSize: 28, color: '#fff', fontWeight: 'bold' },
-  avatarEditBtn: { marginTop: 8, backgroundColor: '#0984e3', paddingVertical: 4, paddingHorizontal: 12, borderRadius: 8 },
-  avatarEditText: { color: '#fff' },
-  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 8, color: '#0984e3' },
-  subtitle: { fontSize: 18, color: '#636e72', marginBottom: 16 },
-  tabBar: { flexDirection: 'row', justifyContent: 'center', marginVertical: 16 },
-  tabBtn: { padding: 12, marginHorizontal: 8, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.5)' },
-  tabActive: { backgroundColor: '#dff9fb' },
-  glassCard: { width: '90%', backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 24, padding: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6 },
-  courseCard: { backgroundColor: '#f5f6fa', borderRadius: 16, padding: 16, marginBottom: 12 },
-  addButton: { backgroundColor: '#00b894', padding: 10, borderRadius: 8, marginBottom: 8 },
-  addText: { color: '#fff', fontWeight: 'bold', textAlign: 'center' },
-  courseTitle: { fontSize: 16, fontWeight: 'bold', color: '#0984e3' },
-  courseDesc: { fontSize: 14, color: '#636e72', marginTop: 4 },
-  courseStatus: { fontSize: 12, color: '#00b894', marginTop: 4 },
-  analyticsText: { fontSize: 13, color: '#636e72', marginTop: 4 },
-  editButton: { backgroundColor: '#0984e3', borderRadius: 24, paddingVertical: 8, paddingHorizontal: 20, marginRight: 8 },
+  container: { flex: 1, backgroundColor: PRIMARY_GREEN, paddingTop: 48 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
+  dashboardTitle: { fontSize: 26, fontWeight: '800', color: OFF_WHITE, letterSpacing: 0.5 },
+  profileButton: { padding: 5, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)' },
+  bottomTabs: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 10, backgroundColor: PRIMARY_GREEN, borderTopColor: 'rgba(255,255,255,0.1)', borderTopWidth: 1 },
+  tabItem: { alignItems: 'center', padding: 5 },
+  tabText: { color: LIGHT_GREY, fontSize: 11, marginTop: 4, fontWeight: '600' },
+  tabTextActive: { color: ACCENT_GOLD, fontWeight: '700' },
+  courseCard: { backgroundColor: 'rgba(250,250,250,0.95)', borderRadius: 16, padding: 16, marginBottom: 12 },
+  courseTitle: { fontSize: 17, fontWeight: '700', color: PRIMARY_GREEN },
+  courseDesc: { fontSize: 14, color: '#333', marginTop: 4 },
+  analyticsText: { fontSize: 13, color: '#333', marginTop: 4 },
+  emptyText: { color: LIGHT_GREY, textAlign: 'center', marginTop: 20, fontSize: 16, opacity: 0.8 },
+  notificationText: { color: OFF_WHITE, marginBottom: 10 },
+  pendingContainer: { backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 12, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: ACCENT_GOLD },
+  pendingText: { color: ACCENT_GOLD, fontWeight: 'bold', textAlign: 'center', fontSize: 15 },
+  addButton: { backgroundColor: ACCENT_GOLD, borderRadius: 8, padding: 10, marginBottom: 12 },
+  addText: { textAlign: 'center', fontWeight: 'bold', color: PRIMARY_GREEN },
+  rowBtns: { flexDirection: 'row', marginTop: 8 },
+  editButton: { backgroundColor: PRIMARY_GREEN, borderRadius: 24, paddingVertical: 8, paddingHorizontal: 20, marginRight: 8 },
   editText: { color: '#fff', fontWeight: 'bold' },
   deleteButton: { backgroundColor: '#d63031', borderRadius: 24, paddingVertical: 8, paddingHorizontal: 20 },
   deleteText: { color: '#fff', fontWeight: 'bold' },
   requestButton: { backgroundColor: '#fdcb6e', borderRadius: 24, paddingVertical: 8, paddingHorizontal: 20 },
-  requestText: { color: '#636e72', fontWeight: 'bold' },
-  rowBtns: { flexDirection: 'row', marginTop: 8 },
-  signoutButton: { backgroundColor: '#d63031', paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8, marginTop: 16 },
-  signoutText: { color: '#fff', fontWeight: 'bold', textAlign: 'center' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#636e72', marginBottom: 8 },
-  notificationText: { color: '#0984e3', fontSize: 15 },
-  input: { borderWidth: 1, borderColor: '#636e72', borderRadius: 8, padding: 8, marginVertical: 4 },
+  requestText: { color: '#333', fontWeight: 'bold' },
+  input: { borderWidth: 1, borderColor: '#333', borderRadius: 8, padding: 8, marginVertical: 4 },
   saveButton: { backgroundColor: '#00b894', borderRadius: 8, padding: 8, marginTop: 4 },
-  cancelButton: { backgroundColor: '#636e72', borderRadius: 8, padding: 8, marginTop: 4 }
+  cancelButton: { backgroundColor: '#636e72', borderRadius: 8, padding: 8, marginTop: 4 },
 });

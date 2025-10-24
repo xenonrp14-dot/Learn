@@ -1,163 +1,82 @@
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    backgroundColor: '#eaf6ff',
-    padding: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#0984e3',
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#636e72',
-    marginBottom: 24,
-  },
-  profileButton: {
-    backgroundColor: '#00b894',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  profileText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  signoutButton: {
-    backgroundColor: '#d63031',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  signoutText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 24,
-    marginBottom: 8,
-    color: '#636e72',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#636e72',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  mentorCard: {
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#636e72',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  mentorEmail: {
-    fontSize: 16,
-    color: '#0984e3',
-    marginBottom: 8,
-  },
-  approveButton: {
-    backgroundColor: '#00b894',
-    borderRadius: 24,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    marginTop: 8,
-  },
-  approveText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  tabBtn: {
-    padding: 12,
-    marginHorizontal: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  tabActive: {
-    backgroundColor: '#dff9fb',
-  },
-  glassCard: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  refreshButton: {
-    backgroundColor: '#0984e3',
-    borderRadius: 24,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    marginTop: 8,
-  },
-  refreshText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-});
-
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Animated } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, ActivityIndicator, Dimensions } from 'react-native';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'expo-router';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+const { width, height } = Dimensions.get('window');
+
+// Animation setup
+const NUM_STARS = 20;
+const STAR_DATA = Array.from({ length: NUM_STARS }).map(() => ({
+  top: Math.random() * height,
+  left: Math.random() * width,
+  opacity: 0.2 + Math.random() * 0.4,
+  size: 2 + Math.random() * 3,
+  duration: 15000 + Math.random() * 15000,
+}));
+
+const NUM_PARTICLES = 12;
+const PARTICLE_DATA = Array.from({ length: NUM_PARTICLES }).map(() => ({
+  top: Math.random() * height,
+  left: Math.random() * width,
+  size: 20 + Math.random() * 40,
+  duration: 20000 + Math.random() * 20000,
+}));
+
+const PRIMARY_GREEN = '#1D4A3D';
+const OFF_WHITE = '#FAFAFA';
+const ACCENT_GOLD = '#FBBF24';
+const LIGHT_GREY = '#F0F4F7';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [waitlist, setWaitlist] = useState([]);
-  const [allUsers, setAllUsers] = useState([]);
+  const [activeTab, setActiveTab] = useState('users');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('waitlist');
-  const tabAnim = useState(new Animated.Value(0))[0];
+  const [users, setUsers] = useState([]);
+  const [pendingMentors, setPendingMentors] = useState([]);
+  const contentOpacity = useRef(new Animated.Value(1)).current;
+  const starAnims = useRef(STAR_DATA.map(() => new Animated.Value(Math.random()))).current;
+  const particleAnims = useRef(PARTICLE_DATA.map(() => new Animated.Value(0))).current;
 
+  // Animate stars
   useEffect(() => {
-    const fetchWaitlist = async () => {
-      const q = query(collection(db, 'users'), where('role', '==', 'mentor'), where('status', '==', 'waitlisted'));
-      const querySnapshot = await getDocs(q);
-      const mentors = [];
-      querySnapshot.forEach((docSnap) => {
-        mentors.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setWaitlist(mentors);
+    starAnims.forEach((anim, idx) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: 1, duration: STAR_DATA[idx].duration, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: STAR_DATA[idx].duration, useNativeDriver: true }),
+        ])
+      ).start();
+    });
+  }, []);
+
+  // Animate particles
+  useEffect(() => {
+    particleAnims.forEach((anim, idx) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: 1, duration: PARTICLE_DATA[idx].duration, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: PARTICLE_DATA[idx].duration, useNativeDriver: true }),
+        ])
+      ).start();
+    });
+  }, []);
+
+  // Fetch all users and pending mentors
+  useEffect(() => {
+    const fetchData = async () => {
+      const userSnapshot = await getDocs(collection(db, 'users'));
+      const allUsers = userSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsers(allUsers);
+
+      const pending = allUsers.filter(u => u.role === 'mentor' && u.status !== 'approved');
+      setPendingMentors(pending);
+      setLoading(false);
     };
-    const fetchAllUsers = async () => {
-      const q = query(collection(db, 'users'));
-      const querySnapshot = await getDocs(q);
-      const users = [];
-      querySnapshot.forEach((docSnap) => {
-        users.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setAllUsers(users);
-    };
-    Promise.all([fetchWaitlist(), fetchAllUsers()]).then(() => setLoading(false));
+    fetchData();
   }, []);
 
   const handleSignOut = async () => {
@@ -165,108 +84,115 @@ export default function AdminDashboard() {
     router.replace('/login');
   };
 
-  const approveMentor = async (mentorId) => {
-    await updateDoc(doc(db, 'users', mentorId), { status: 'approved' });
-    setWaitlist(waitlist.filter((mentor) => mentor.id !== mentorId));
+  const handleTabPress = (newTab) => {
+    if (newTab === activeTab) return;
+    Animated.timing(contentOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setActiveTab(newTab);
+      Animated.timing(contentOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    });
   };
 
-  return (
-    <View style={[styles.container, { flex: 1 }] }>
-      <Text style={styles.title}>Admin Dashboard</Text>
-      <Text style={styles.subtitle}>Welcome, Admin!</Text>
-      <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/adminProfile')}>
-        <Text style={styles.profileText}>Profile</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
-        <Text style={styles.signoutText}>Sign Out</Text>
-      </TouchableOpacity>
-      <Text style={styles.sectionTitle}>Mentor Waitlist</Text>
-  {loading ? (
-        <ActivityIndicator size="large" color="#6c5ce7" />
-      ) : waitlist.length === 0 ? (
-        <Text style={styles.emptyText}>No waitlisted mentors.</Text>
-      ) : (
-        waitlist.map((mentor) => (
-          <View key={mentor.id} style={styles.mentorCard}>
-            <Text style={styles.mentorEmail}>{mentor.email}</Text>
-            <TouchableOpacity style={styles.approveButton} onPress={() => approveMentor(mentor.id)}>
-              <Text style={styles.approveText}>Approve</Text>
-            </TouchableOpacity>
-          </View>
-        ))
-      )}
+  const starAnimatedStyle = (star, idx) => ({
+    position: 'absolute',
+    top: star.top,
+    left: star.left,
+    width: star.size,
+    height: star.size,
+    borderRadius: star.size / 2,
+    backgroundColor: OFF_WHITE,
+    opacity: starAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0.1, star.opacity] }),
+    transform: [{ translateX: starAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0, Math.random() > 0.5 ? 80 : -80] }) }]
+  });
 
-  {/* ...existing code... */}
-      <View style={[styles.container, { flex: 1 }] }>
-        <Text style={styles.title}>Admin Dashboard</Text>
-        <View style={styles.tabBar}>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'waitlist' && styles.tabActive]} onPress={() => {
-            setActiveTab('waitlist');
-            Animated.spring(tabAnim, { toValue: 0, useNativeDriver: true }).start();
-          }}>
-            <MaterialCommunityIcons name="account-clock" size={28} color={activeTab === 'waitlist' ? '#27ae60' : '#b2bec3'} />
+  const particleAnimatedStyle = (particle, idx) => ({
+    position: 'absolute',
+    top: particle.top,
+    left: particle.left,
+    width: particle.size,
+    height: particle.size,
+    borderRadius: particle.size / 2,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    opacity: particleAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.25] }),
+    transform: [
+      { translateX: particleAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0, Math.random() > 0.5 ? 60 : -60] }) },
+      { translateY: particleAnims[idx].interpolate({ inputRange: [0, 1], outputRange: [0, Math.random() > 0.5 ? 60 : -60] }) }
+    ]
+  });
+
+  if (loading) return <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={ACCENT_GOLD} /></View>;
+
+  return (
+    <View style={styles.container}>
+      {STAR_DATA.map((star, idx) => <Animated.View key={idx} style={starAnimatedStyle(star, idx)} />)}
+      {PARTICLE_DATA.map((p, idx) => <Animated.View key={idx} style={particleAnimatedStyle(p, idx)} />)}
+
+      <View style={styles.topBar}>
+        <Text style={styles.dashboardTitle}>Admin Hub</Text>
+        <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/adminProfile')}>
+          <Ionicons name="person-circle-outline" size={30} color={ACCENT_GOLD} />
+        </TouchableOpacity>
+      </View>
+
+      <Animated.View style={{ flex: 1, opacity: contentOpacity, paddingHorizontal: 20 }}>
+        <View style={styles.bottomTabs}>
+          <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('users')}>
+            <MaterialCommunityIcons name="account-group-outline" size={28} color={activeTab === 'users' ? ACCENT_GOLD : LIGHT_GREY} />
+            <Text style={[styles.tabText, activeTab === 'users' && styles.tabTextActive]}>Users</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'users' && styles.tabActive]} onPress={() => {
-            setActiveTab('users');
-            Animated.spring(tabAnim, { toValue: 1, useNativeDriver: true }).start();
-          }}>
-            <Ionicons name="people" size={28} color={activeTab === 'users' ? '#27ae60' : '#b2bec3'} />
+          <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('pending')}>
+            <Ionicons name="time-outline" size={28} color={activeTab === 'pending' ? ACCENT_GOLD : LIGHT_GREY} />
+            <Text style={[styles.tabText, activeTab === 'pending' && styles.tabTextActive]}>Pending Mentors</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'profile' && styles.tabActive]} onPress={() => {
-            setActiveTab('profile');
-            Animated.spring(tabAnim, { toValue: 2, useNativeDriver: true }).start();
-          }}>
-            <MaterialCommunityIcons name="account" size={28} color={activeTab === 'profile' ? '#27ae60' : '#b2bec3'} />
+          <TouchableOpacity style={styles.tabItem} onPress={handleSignOut}>
+            <MaterialCommunityIcons name="logout" size={28} color={LIGHT_GREY} />
+            <Text style={styles.tabText}>Logout</Text>
           </TouchableOpacity>
         </View>
-        <Animated.View style={{ flex: 1, width: '100%', transform: [{ translateX: tabAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [0, -20, -40] }) }] }}>
-          {activeTab === 'waitlist' && (
-            <View style={styles.glassCard}>
-              <Text style={styles.sectionTitle}>Mentor Waitlist</Text>
-              {loading ? (
-                <ActivityIndicator size="large" color="#6c5ce7" />
-              ) : waitlist.length === 0 ? (
-                <Text style={styles.emptyText}>No waitlisted mentors.</Text>
-              ) : (
-                waitlist.map((mentor) => (
-                  <View key={mentor.id} style={styles.mentorCard}>
-                    <Text style={styles.mentorEmail}>{mentor.email}</Text>
-                    <TouchableOpacity style={styles.approveButton} onPress={() => approveMentor(mentor.id)}>
-                      <Text style={styles.approveText}>Approve</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
-              )}
-            </View>
-          )}
-          {activeTab === 'users' && (
-            <View style={styles.glassCard}>
-              <Text style={styles.sectionTitle}>All Users</Text>
-              {allUsers.map((user) => (
-                <View key={user.id} style={styles.mentorCard}>
-                  <Text>Email: {user.email}</Text>
-                  <Text>Role: {user.role}</Text>
-                  <TouchableOpacity style={styles.refreshButton} onPress={() => { setLoading(true); setTimeout(() => { window.location.reload(); }, 100); }}>
-                    <Text style={styles.refreshText}>Refresh</Text>
-                  </TouchableOpacity>
-                  <Text>ID: {user.id}</Text>
+
+        {activeTab === 'users' && (
+          <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+            {users.length === 0 ? <Text style={styles.emptyText}>No users found.</Text> :
+              users.map(u => (
+                <View key={u.id} style={styles.userCard}>
+                  <Text style={styles.userName}>{u.name}</Text>
+                  <Text style={styles.userRole}>{u.role}</Text>
+                  <Text style={styles.userStatus}>{u.status || 'N/A'}</Text>
                 </View>
-              ))}
-            </View>
-          )}
-          {activeTab === 'profile' && (
-            <View style={styles.glassCard}>
-              <Text style={styles.sectionTitle}>Profile</Text>
-              <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/adminProfile')}>
-                <Text style={styles.profileText}>Edit Profile</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
-                <Text style={styles.signoutText}>Sign Out</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </Animated.View>
-      </View>
+              ))
+            }
+          </ScrollView>
+        )}
+
+        {activeTab === 'pending' && (
+          <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+            {pendingMentors.length === 0 ? <Text style={styles.emptyText}>No pending mentors.</Text> :
+              pendingMentors.map(u => (
+                <View key={u.id} style={styles.userCard}>
+                  <Text style={styles.userName}>{u.name}</Text>
+                  <Text style={styles.userRole}>{u.role}</Text>
+                  <Text style={styles.userStatus}>{u.status || 'Pending'}</Text>
+                </View>
+              ))
+            }
+          </ScrollView>
+        )}
+      </Animated.View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: PRIMARY_GREEN, paddingTop: 48 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
+  dashboardTitle: { fontSize: 26, fontWeight: '800', color: OFF_WHITE, letterSpacing: 0.5 },
+  profileButton: { padding: 5, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)' },
+  bottomTabs: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 10, backgroundColor: PRIMARY_GREEN, borderTopColor: 'rgba(255,255,255,0.1)', borderTopWidth: 1 },
+  tabItem: { alignItems: 'center', padding: 5 },
+  tabText: { color: LIGHT_GREY, fontSize: 11, marginTop: 4, fontWeight: '600' },
+  tabTextActive: { color: ACCENT_GOLD, fontWeight: '700' },
+  userCard: { backgroundColor: 'rgba(250,250,250,0.95)', borderRadius: 16, padding: 16, marginBottom: 12 },
+  userName: { fontSize: 17, fontWeight: '700', color: PRIMARY_GREEN },
+  userRole: { fontSize: 14, color: '#333', marginTop: 2 },
+  userStatus: { fontSize: 13, color: '#666', marginTop: 2 },
+  emptyText: { color: LIGHT_GREY, textAlign: 'center', marginTop: 40, fontSize: 16, opacity: 0.8 },
+});
