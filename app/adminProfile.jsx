@@ -6,20 +6,17 @@ const admin = {
   name: 'Admin User',
   email: 'xenonrp14@gmail.com',
   role: 'admin',
-  profilePic: 'https://randomuser.me/api/portraits/men/99.jpg',
+  profilePic: 'https://cdn-icons-png.flaticon.com/512/847/847969.png',
 };
 
 export default function AdminProfile() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Image source={{ uri: admin.profilePic }} style={styles.avatar} />
+  <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/847/847969.png' }} style={styles.avatar} />
         <Text style={styles.name}>{admin.name}</Text>
         <Text style={styles.role}>{admin.role.toUpperCase()}</Text>
         <Text style={styles.email}>{admin.email}</Text>
-        <TouchableOpacity style={styles.editButton}>
-          <Text style={styles.editText}>Edit Profile</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );

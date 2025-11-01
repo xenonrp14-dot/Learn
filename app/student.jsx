@@ -40,6 +40,7 @@ export default function StudentDashboard() {
   const [enrollingId, setEnrollingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [detailsCourseId, setDetailsCourseId] = useState(null);
 
   const router = useRouter();
   const contentOpacity = useRef(new Animated.Value(1)).current;
@@ -172,15 +173,23 @@ export default function StudentDashboard() {
             {!isProgramView && <Text style={[styles.courseStatusBadge, { color: getStatusColor(item.status || 'Active'), borderColor: getStatusColor(item.status || 'Active') }]}>{item.status || 'Active'}</Text>}
           </View>
           <View style={styles.divider} />
-          <TouchableOpacity
-            style={[styles.enrollButton, isEnrolled && styles.enrolledButton, isRequested && styles.requestedButton]}
-            disabled={isDisabled && !isRejected}
-            onPress={() => isProgramView && isEnrolled ? showMessage('Navigating to course...') : handleEnroll(item)}
-          >
-            <Text style={[styles.enrollText, isEnrolled && styles.enrolledText, isRequested && styles.requestedText]}>
-              {buttonText}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={[styles.enrollButton, isEnrolled && styles.enrolledButton, isRequested && styles.requestedButton]}
+              disabled={isDisabled && !isRejected}
+              onPress={() => isProgramView && isEnrolled ? showMessage('Navigating to course...') : handleEnroll(item)}
+            >
+              <Text style={[styles.enrollText, isEnrolled && styles.enrolledText, isRequested && styles.requestedText]}>
+                {buttonText}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.detailsButton}
+              onPress={() => setDetailsCourseId(item.id)}
+            >
+              <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15 }}>Details</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Animated.View>
     );
@@ -254,7 +263,64 @@ export default function StudentDashboard() {
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
               {loading ? <Text style={styles.emptyText}>Loading enrolled programs...</Text> :
                 programs.length === 0 ? <Text style={styles.emptyText}>You are not yet enrolled in any programs.</Text> :
-                  programs.map((item) => renderCourseCard(item, true))
+                  programs
+                    .filter(item => allCourses.some(course => course.id === item.id))
+                    .map((item) => {
+                      const status = item.status;
+                      const isRequested = status === 'requested';
+                      const course = allCourses.find(c => c.id === item.id);
+                      return (
+                        <Animated.View key={item.id || item.title} style={{ opacity: contentOpacity, marginBottom: 12 }}>
+                          <View style={styles.courseCard}>
+                            <View style={styles.cardHeader}>
+                              <Text style={styles.courseTitle}>{item.title}</Text>
+                              <Text style={[styles.courseStatusBadge, { color: isRequested ? ACCENT_GOLD : getStatusColor(status), borderColor: isRequested ? ACCENT_GOLD : getStatusColor(status) }]}>{status || 'Active'}</Text>
+                            </View>
+                            <View style={styles.divider} />
+                            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}>
+                              {isRequested ? (
+                                <TouchableOpacity
+                                  style={[styles.enrollButton, { backgroundColor: '#EF4444' }]}
+                                  onPress={async () => {
+                                    const user = auth.currentUser;
+                                    if (!user) return;
+                                    setEnrollingId(item.id);
+                                    const userRef = doc(db, 'users', user.uid);
+                                    const userDoc = await getDoc(userRef);
+                                    if (userDoc.exists()) {
+                                      const enrolledArr = userDoc.data().enrolled || [];
+                                      const filtered = enrolledArr.filter(e => !(e.id === item.id && e.status === 'requested'));
+                                      await updateDoc(userRef, { enrolled: filtered });
+                                      setPrograms(filtered);
+                                      showMessage('Request withdrawn.');
+                                    }
+                                    setEnrollingId(null);
+                                  }}
+                                  disabled={enrollingId === item.id}
+                                >
+                                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>Withdraw</Text>
+                                </TouchableOpacity>
+                              ) : (
+                                <TouchableOpacity
+                                  style={[styles.enrollButton, status === 'enrolled' && styles.enrolledButton]}
+                                  disabled={true}
+                                >
+                                  <Text style={[styles.enrollText, status === 'enrolled' && styles.enrolledText]}>
+                                    {status === 'enrolled' ? 'Enrolled' : status}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                              <TouchableOpacity
+                                style={styles.detailsButton}
+                                onPress={() => setDetailsCourseId(item.id)}
+                              >
+                                <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15 }}>Details</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </Animated.View>
+                      );
+                    })
               }
             </ScrollView>
           </View>
@@ -281,6 +347,52 @@ export default function StudentDashboard() {
           <Text style={styles.tabText}>Logout</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Details Modal for any course */}
+      {detailsCourseId && (() => {
+        const safeCourses = Array.isArray(allCourses) ? allCourses : [];
+        const item = safeCourses.find(c => c.id === detailsCourseId);
+        if (!item) return null;
+        return (
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.35)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999,
+          }}>
+            <View style={{
+              backgroundColor: '#fff',
+              borderRadius: 18,
+              padding: 24,
+              width: '95%',
+              maxWidth: 500,
+              minHeight: 320,
+              maxHeight: '80%',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 8,
+              elevation: 8,
+              display: 'flex',
+            }}>
+              <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 12 }}>{item.title}</Text>
+                <Text style={{ fontSize: 16, color: '#333', marginBottom: 8 }}>{item.description || 'No description available.'}</Text>
+                <Text style={{ fontSize: 15, color: PRIMARY_GREEN, marginBottom: 8 }}>Duration: {item.duration || 'N/A'}</Text>
+                <Text style={{ fontSize: 15, color: PRIMARY_GREEN, marginBottom: 8 }}>Organization: {item.organisation || 'N/A'}</Text>
+              </ScrollView>
+              <TouchableOpacity style={{ marginTop: 18, alignSelf: 'center', backgroundColor: PRIMARY_GREEN, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 28 }} onPress={() => setDetailsCourseId(null)}>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+      })()}
     </View>
   );
 }

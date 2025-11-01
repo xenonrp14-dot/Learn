@@ -1,7 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  Image, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ActivityIndicator, 
+  TextInput, 
+  Animated, 
+  Easing, 
+  Dimensions 
+} from 'react-native';
 import { auth, db } from '../firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+
+const { width } = Dimensions.get('window');
+const PRIMARY_GREEN = '#1D4A3D';
+const OFF_WHITE = '#FFFFFF';
+const DARK_OVERLAY = 'rgba(255,255,255,0.08)';
 
 export default function MentorProfile() {
   const [mentor, setMentor] = useState(null);
@@ -10,23 +26,35 @@ export default function MentorProfile() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(50)).current;
+  const rotation = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    const fetchMentor = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const user = auth.currentUser;
+    if (!user) return;
+    getDoc(doc(db, 'users', user.uid)).then(userDoc => {
       if (userDoc.exists()) {
         setMentor(userDoc.data());
         setForm(userDoc.data());
       }
       setLoading(false);
-    };
-    fetchMentor();
+    });
+
+    // Entry animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 0, friction: 6, tension: 60, useNativeDriver: true }),
+    ]).start();
+
+    // Rotating background ornament
+    Animated.loop(
+      Animated.timing(rotation, { toValue: 1, duration: 40000, easing: Easing.linear, useNativeDriver: true })
+    ).start();
   }, []);
 
-  const handleChange = (field, value) => {
-    setForm({ ...form, [field]: value });
-  };
+  const handleChange = (field, value) => setForm({ ...form, [field]: value });
 
   const handleSave = async () => {
     setSaving(true);
@@ -38,10 +66,13 @@ export default function MentorProfile() {
     setSaving(false);
   };
 
+  const rotate1 = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotate2 = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-360deg'] });
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0984e3" />
+      <View style={[styles.container, { justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={OFF_WHITE} />
       </View>
     );
   }
@@ -49,132 +80,114 @@ export default function MentorProfile() {
   if (!mentor) {
     return (
       <View style={styles.container}>
-        <Text style={styles.name}>No profile data found.</Text>
+        <Text style={styles.noData}>No profile data found.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.glassContainer}>
-      <View style={styles.card}>
-        <View style={styles.avatarCircle}>
-          {form.profilePic ? (
-            <Image source={{ uri: form.profilePic }} style={styles.avatarImg} />
-          ) : (
-            <Text style={styles.avatarInitial}>{form.name?.[0]?.toUpperCase() || mentor.email?.[0]?.toUpperCase() || 'M'}</Text>
-          )}
-        </View>
-        {editMode && (
-          <TouchableOpacity style={styles.avatarEditBtn} onPress={() => {/* TODO: implement image picker */}}>
-            <Text style={styles.avatarEditText}>Change Image</Text>
-          </TouchableOpacity>
-        )}
+    <View style={styles.container}>
+      {/* Rotating spiral ornaments */}
+      <Animated.View style={[styles.ornament, { width: width * 1.6, height: width * 1.6, opacity: 0.08, transform: [{ rotate: rotate1 }] }]} />
+      <Animated.View style={[styles.ornament, { width: width * 1.1, height: width * 1.1, opacity: 0.15, transform: [{ rotate: rotate2 }] }]} />
+
+      {/* Floating white profile card */}
+      <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY }] }]}>
+        <Image 
+          source={{ uri: 'https://cdn-icons-png.flaticon.com/512/847/847969.png' }} 
+          style={styles.avatar} 
+        />
+
         {editMode ? (
-          <TextInput style={styles.input} value={form.name || ''} onChangeText={v => handleChange('name', v)} placeholder="Name" />
+          <TextInput
+            style={styles.input}
+            value={form.name || ''}
+            onChangeText={v => handleChange('name', v)}
+            placeholder="Name"
+          />
         ) : (
           <Text style={styles.name}>{mentor.name || 'No Name'}</Text>
         )}
+
         {editMode ? (
-          <TextInput style={styles.input} value={form.organization || ''} onChangeText={v => handleChange('organization', v)} placeholder="Organization" />
+          <TextInput
+            style={styles.input}
+            value={form.organization || ''}
+            onChangeText={v => handleChange('organization', v)}
+            placeholder="Organization"
+          />
         ) : (
           <Text style={styles.org}>{mentor.organization || 'No Organization'}</Text>
         )}
-        <Text style={styles.status}>{mentor.status === 'approved' ? 'Approved Mentor' : 'Waitlisted'}</Text>
+
+        <Text style={[styles.status, { color: mentor.status === 'approved' ? '#00b894' : '#ff7675' }]}>
+          {mentor.status === 'approved' ? 'Approved Mentor' : 'Waitlisted'}
+        </Text>
+
         <Text style={styles.email}>{mentor.email}</Text>
+
         {editMode ? (
-          <TextInput style={styles.input} value={form.phone || ''} onChangeText={v => handleChange('phone', v)} placeholder="Phone" />
+          <TextInput
+            style={styles.input}
+            value={form.phone || ''}
+            onChangeText={v => handleChange('phone', v)}
+            placeholder="Phone"
+            keyboardType="numeric"
+          />
         ) : (
           <Text style={styles.phone}>{mentor.phone || 'No Phone'}</Text>
         )}
+
         {editMode ? (
-          <TextInput style={styles.input} value={form.bio || ''} onChangeText={v => handleChange('bio', v)} placeholder="Bio" />
+          <TextInput
+            style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+            value={form.bio || ''}
+            onChangeText={v => handleChange('bio', v)}
+            placeholder="Bio"
+            multiline
+          />
         ) : (
           <Text style={styles.bio}>{mentor.bio || 'No Bio'}</Text>
         )}
-        <Text style={styles.sectionTitle}>Courses/Programs</Text>
-        {(mentor.courses || []).map((course, idx) => (
-          <View key={idx} style={styles.courseCard}>
-            <Text style={styles.courseTitle}>{course.title}</Text>
-            <Text style={styles.courseDesc}>{course.description}</Text>
-          </View>
-        ))}
-        {editMode ? (
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
-            <Text style={styles.editText}>{saving ? 'Saving...' : 'Save'}</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.editButton} onPress={() => setEditMode(true)}>
-            <Text style={styles.editText}>Edit Profile</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+
+        <TouchableOpacity
+          style={[styles.button, editMode ? styles.saveButton : styles.editButton]}
+          onPress={editMode ? handleSave : () => setEditMode(true)}
+          disabled={saving}
+        >
+          <Text style={styles.buttonText}>{saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Profile'}</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  glassContainer: {
-    flex: 1,
-    backgroundColor: 'linear-gradient(135deg, #eaf6ff 0%, #c1e1c1 100%)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  avatarCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#dff9fb',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#636e72',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  avatarInitial: {
-    fontSize: 48,
-    color: '#0984e3',
-    fontWeight: 'bold',
-  },
-  avatarImg: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  avatarEditBtn: {
-    position: 'absolute',
-    right: 24,
-    top: 24,
-    backgroundColor: '#0984e3',
-    borderRadius: 16,
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-  },
-  avatarEditText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
   container: {
     flex: 1,
-    backgroundColor: '#eaf6ff',
-    justifyContent: 'center',
+    backgroundColor: PRIMARY_GREEN,
     alignItems: 'center',
+    justifyContent: 'center',
     padding: 16,
   },
+  ornament: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: DARK_OVERLAY,
+    borderRadius: 10,
+  },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 32,
-    padding: 24,
+    backgroundColor: OFF_WHITE,
+    borderRadius: 28,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    width: '100%',
-    maxWidth: 400,
+    width: width * 0.88,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 25,
+    elevation: 10,
   },
   avatar: {
     width: 100,
@@ -183,31 +196,30 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   name: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#0984e3',
+    color: PRIMARY_GREEN,
     marginBottom: 4,
   },
   org: {
     fontSize: 16,
     color: '#636e72',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   status: {
     fontSize: 14,
-    color: '#00b894',
-    marginBottom: 8,
     fontWeight: 'bold',
+    marginBottom: 8,
   },
   email: {
     fontSize: 14,
     color: '#636e72',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   phone: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#636e72',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   bio: {
     fontSize: 16,
@@ -215,58 +227,38 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0984e3',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  courseCard: {
-    backgroundColor: '#eaf6ff',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 8,
-    width: '100%',
-    alignItems: 'flex-start',
-  },
-  courseTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#636e72',
-  },
-  courseDesc: {
-    fontSize: 14,
-    color: '#636e72',
-  },
   input: {
     width: '100%',
     height: 40,
-    borderColor: '#636e72',
+    borderColor: '#ccc',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     marginBottom: 8,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: '#f9f9f9',
     fontSize: 16,
   },
-  editButton: {
-    backgroundColor: '#0984e3',
-    borderRadius: 24,
-    paddingVertical: 10,
+  button: {
+    borderRadius: 20,
+    paddingVertical: 12,
     paddingHorizontal: 32,
-    marginTop: 16,
+    marginTop: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  editButton: {
+    backgroundColor: PRIMARY_GREEN,
   },
   saveButton: {
     backgroundColor: '#00b894',
-    borderRadius: 24,
-    paddingVertical: 10,
-    paddingHorizontal: 32,
-    marginTop: 16,
   },
-  editText: {
-    color: '#fff',
+  buttonText: {
+    color: OFF_WHITE,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  noData: {
+    color: OFF_WHITE,
+    fontSize: 18,
   },
 });

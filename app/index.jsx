@@ -1,5 +1,14 @@
 import React, { useRef, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Animated, Easing, Platform } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Dimensions,
+  Animated,
+  Easing,
+  Platform,
+} from 'react-native';
 import { Link } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -15,15 +24,18 @@ const SPIRAL_COLOR = 'rgba(107,107,107,0.35)';
 // Background sizes
 const ORNAMENT_SIZE = Math.max(height, width) * 1.5;
 
-// Number of animations
+// Animation counts
 const NUM_FLOW_LINES = 12;
-const NUM_SPARKS = 35;
+const NUM_SPARKS = 25;
+const NUM_ORBS = 6;
+const NUM_TWINKLES = 20;
 
 // ---- Spiral Component ----
 const SpiralAnimation = () => {
   const rotation = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.7)).current;
-  const opacity = useRef(new Animated.Value(0.35)).current; // more opaque
+  const opacity = useRef(new Animated.Value(0.35)).current;
+  const pulse = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
     Animated.loop(
@@ -48,6 +60,13 @@ const SpiralAnimation = () => {
         Animated.timing(opacity, { toValue: 0.35, duration: 4000, useNativeDriver: true }),
       ])
     ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.9, duration: 2000, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
   }, []);
 
   const rotateInterpolate = rotation.interpolate({
@@ -61,18 +80,37 @@ const SpiralAnimation = () => {
         position: 'absolute',
         bottom: 15,
         right: 15,
-        width: 60,
-        height: 60,
-        borderWidth: 2,
-        borderColor: SPIRAL_COLOR,
-        transform: [{ rotate: rotateInterpolate }, { scale }],
+        width: 80,
+        height: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
         opacity,
-        borderRadius: 8,
       }}
     >
-      <View style={styles.innerSpiral} />
-      <View style={[styles.innerSpiral, { width: 40, height: 40, top: 10, left: 10 }]} />
-      <View style={[styles.innerSpiral, { width: 20, height: 20, top: 20, left: 20 }]} />
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: 90,
+          height: 90,
+          borderRadius: 45,
+          backgroundColor: 'rgba(255,255,255,0.15)',
+          transform: [{ scale: pulse }],
+        }}
+      />
+      <Animated.View
+        style={{
+          width: 60,
+          height: 60,
+          borderWidth: 2,
+          borderColor: SPIRAL_COLOR,
+          borderRadius: 8,
+          transform: [{ rotate: rotateInterpolate }, { scale }],
+        }}
+      >
+        <View style={styles.innerSpiral} />
+        <View style={[styles.innerSpiral, { width: 40, height: 40, top: 10, left: 10 }]} />
+        <View style={[styles.innerSpiral, { width: 20, height: 20, top: 20, left: 20 }]} />
+      </Animated.View>
     </Animated.View>
   );
 };
@@ -84,7 +122,7 @@ export default function Home() {
   const iconScale = useRef(new Animated.Value(0.8)).current;
   const rotationAnim = useRef(new Animated.Value(0)).current;
 
-  // Flow lines & sparks
+  // Background animations
   const flowLines = useRef(
     Array.from({ length: NUM_FLOW_LINES }, () => ({
       x: new Animated.Value(Math.random() * width),
@@ -108,12 +146,32 @@ export default function Home() {
     }))
   ).current;
 
+  const orbs = useRef(
+    Array.from({ length: NUM_ORBS }, () => ({
+      x: new Animated.Value(Math.random() * width),
+      y: new Animated.Value(Math.random() * height),
+      opacity: new Animated.Value(0.2 + Math.random() * 0.4),
+      scale: new Animated.Value(0.5 + Math.random() * 0.8),
+      size: 70 + Math.random() * 100,
+      speed: 15000 + Math.random() * 10000,
+    }))
+  ).current;
+
+  const twinkles = useRef(
+    Array.from({ length: NUM_TWINKLES }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      opacity: new Animated.Value(Math.random() * 0.5),
+      size: 3 + Math.random() * 2,
+    }))
+  ).current;
+
   useEffect(() => {
-    // Slow rotating squares
+    // Background slow rotation
     Animated.loop(
       Animated.timing(rotationAnim, {
         toValue: 1,
-        duration: 40000, // much slower rotation
+        duration: 40000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -128,7 +186,7 @@ export default function Home() {
       ]),
     ]).start();
 
-    // Flow lines animation
+    // Flow lines
     flowLines.forEach(line => {
       const animateLine = () => {
         line.y.setValue(-line.height);
@@ -138,7 +196,7 @@ export default function Home() {
       animateLine();
     });
 
-    // Sparks animation
+    // Sparks
     sparks.forEach(spark => {
       const animateSpark = () => {
         spark.y.setValue(height + Math.random() * 50);
@@ -153,57 +211,120 @@ export default function Home() {
       animateSpark();
     });
 
+    // Orbs floating
+    orbs.forEach(orb => {
+      const floatOrb = () => {
+        Animated.sequence([
+          Animated.timing(orb.x, { toValue: Math.random() * width, duration: orb.speed, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(orb.y, { toValue: Math.random() * height, duration: orb.speed, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ]).start(() => floatOrb());
+      };
+      floatOrb();
+    });
+
+    // Twinkling stars
+    twinkles.forEach(t => {
+      const blink = () => {
+        Animated.sequence([
+          Animated.timing(t.opacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(t.opacity, { toValue: 0.1, duration: 1000, useNativeDriver: true }),
+        ]).start(() => blink());
+      };
+      blink();
+    });
   }, []);
 
-  const rotation1 = rotationAnim.interpolate({ inputRange: [0,1], outputRange: ['0deg','360deg'] });
-  const rotation2 = rotationAnim.interpolate({ inputRange: [0,1], outputRange: ['0deg','-360deg'] });
+  const rotation1 = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotation2 = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-360deg'] });
 
   return (
     <View style={styles.container}>
       {/* Background */}
       <View style={styles.backgroundContainer}>
+        {/* Floating orbs */}
+        {orbs.map((orb, idx) => (
+          <Animated.View
+            key={`orb-${idx}`}
+            style={{
+              position: 'absolute',
+              width: orb.size,
+              height: orb.size,
+              borderRadius: orb.size / 2,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              opacity: orb.opacity,
+              transform: [{ translateX: orb.x }, { translateY: orb.y }, { scale: orb.scale }],
+            }}
+          />
+        ))}
+
+        {/* Twinkling stars */}
+        {twinkles.map((t, idx) => (
+          <Animated.View
+            key={`tw-${idx}`}
+            style={{
+              position: 'absolute',
+              width: t.size,
+              height: t.size,
+              borderRadius: t.size / 2,
+              backgroundColor: OFF_WHITE,
+              opacity: t.opacity,
+              transform: [{ translateX: t.x }, { translateY: t.y }],
+            }}
+          />
+        ))}
+
+        {/* Flow lines */}
         {flowLines.map((line, idx) => (
-          <Animated.View key={idx} style={{
-            position:'absolute',
-            width: line.width,
-            height: line.height,
-            backgroundColor: OFF_WHITE,
-            opacity: line.opacity,
-            borderRadius:2,
-            transform: [{ translateX: line.x }, { translateY: line.y }, { rotate: `${line.rotation}deg` }],
-          }}/>
+          <Animated.View
+            key={`line-${idx}`}
+            style={{
+              position: 'absolute',
+              width: line.width,
+              height: line.height,
+              backgroundColor: OFF_WHITE,
+              opacity: line.opacity,
+              borderRadius: 2,
+              transform: [{ translateX: line.x }, { translateY: line.y }, { rotate: `${line.rotation}deg` }],
+            }}
+          />
         ))}
 
+        {/* Rising sparks */}
         {sparks.map((spark, idx) => (
-          <Animated.View key={idx} style={{
-            position:'absolute',
-            width: spark.size,
-            height: spark.size,
-            backgroundColor: OFF_WHITE,
-            borderRadius: spark.size/2,
-            opacity: spark.opacity,
-            transform: [{ translateX: spark.x }, { translateY: spark.y }, { scale: spark.scale }],
-            shadowColor: OFF_WHITE,
-            shadowOpacity: 0.5,
-            shadowRadius: 10,
-          }}/>
+          <Animated.View
+            key={`spark-${idx}`}
+            style={{
+              position: 'absolute',
+              width: spark.size,
+              height: spark.size,
+              backgroundColor: OFF_WHITE,
+              borderRadius: spark.size / 2,
+              opacity: spark.opacity,
+              transform: [{ translateX: spark.x }, { translateY: spark.y }, { scale: spark.scale }],
+            }}
+          />
         ))}
 
-        <Animated.View style={[styles.animatedOrnamentSquare, { width: ORNAMENT_SIZE, height: ORNAMENT_SIZE, opacity: 0.08, transform:[{rotate:rotation1}] }]} />
-        <Animated.View style={[styles.animatedOrnamentSquare, { width: ORNAMENT_SIZE*0.7, height: ORNAMENT_SIZE*0.7, opacity: 0.15, transform:[{rotate:rotation2}] }]} />
+        {/* Rotating squares */}
+        <Animated.View
+          style={[styles.animatedOrnamentSquare, { width: ORNAMENT_SIZE, height: ORNAMENT_SIZE, opacity: 0.08, transform: [{ rotate: rotation1 }] }]}
+        />
+        <Animated.View
+          style={[styles.animatedOrnamentSquare, { width: ORNAMENT_SIZE * 0.7, height: ORNAMENT_SIZE * 0.7, opacity: 0.15, transform: [{ rotate: rotation2 }] }]}
+        />
       </View>
 
       {/* Top Content */}
       <View style={styles.topContentWrapper}>
-        <Animated.View style={{transform:[{scale:iconScale}], zIndex:1}}>
-          <MaterialCommunityIcons name="school-outline" size={50} color={OFF_WHITE} style={styles.appIcon}/>
+        <Animated.View style={{ transform: [{ scale: iconScale }], zIndex: 1 }}>
+          <MaterialCommunityIcons name="school-outline" size={50} color={OFF_WHITE} style={styles.appIcon} />
         </Animated.View>
         <Text style={styles.heroTitle}>Unlock Your Potential</Text>
         <Text style={styles.heroSubtitle}>Connect, Learn, and Master New Skills.</Text>
       </View>
 
       {/* Card */}
-      <Animated.View style={[styles.floatingCard, { opacity: cardOpacity, transform:[{translateY:cardTranslateY}] }]}>
+      <Animated.View style={[styles.floatingCard, { opacity: cardOpacity, transform: [{ translateY: cardTranslateY }] }]}>
         <Text style={styles.cardTitle}>Ready to begin your learning journey?</Text>
 
         <Link href="/login" asChild>
@@ -218,7 +339,7 @@ export default function Home() {
           </TouchableOpacity>
         </Link>
 
-        {/* Spiral Animation */}
+        {/* Spiral */}
         <SpiralAnimation />
       </Animated.View>
     </View>
@@ -226,18 +347,44 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  container:{ flex:1, backgroundColor:PRIMARY_GREEN, alignItems:'center', paddingTop:Platform.OS==='android'?30:0 },
-  backgroundContainer:{ position:'absolute', top:0,left:0,right:0,bottom:0, justifyContent:'center', alignItems:'center', overflow:'hidden', zIndex:1 },
-  animatedOrnamentSquare:{ position:'absolute', borderWidth:1, borderColor:DARK_OVERLAY, backgroundColor:'transparent', borderRadius:5 },
-  topContentWrapper:{ width:'100%', height: height*0.4, justifyContent:'center', alignItems:'center', paddingTop:40, zIndex:10 },
-  appIcon:{ marginBottom:10 },
-  heroTitle:{ fontSize:26, fontWeight:'bold', color:OFF_WHITE, marginBottom:5, textAlign:'center' },
-  heroSubtitle:{ fontSize:16, color:LIGHT_GREY, opacity:0.9, textAlign:'center' },
-  floatingCard:{ width: width*0.88, backgroundColor:OFF_WHITE, borderRadius:25, paddingHorizontal:30, paddingVertical:55, alignItems:'center', marginTop:40, shadowColor:'#000', shadowOffset:{width:0,height:15}, shadowOpacity:0.15, shadowRadius:30, elevation:15, zIndex:15 },
-  cardTitle:{ fontSize:22, fontWeight:'bold', color:PRIMARY_GREEN, marginBottom:30, textAlign:'center' },
-  button:{ backgroundColor:PRIMARY_GREEN, paddingVertical:14, borderRadius:12, width:'100%', alignItems:'center', marginBottom:16, shadowColor:PRIMARY_GREEN, shadowOffset:{width:0,height:6}, shadowOpacity:0.3, shadowRadius:12, elevation:8 },
-  buttonText:{ color:OFF_WHITE, fontSize:18, fontWeight:'bold', letterSpacing:0.5 },
-  signupButton:{ backgroundColor:OFF_WHITE, borderWidth:2, borderColor:PRIMARY_GREEN, shadowColor:LIGHT_GREY, shadowOffset:{width:0,height:2}, shadowOpacity:0.2, shadowRadius:8, elevation:4 },
-  signupButtonText:{ color:PRIMARY_GREEN, fontSize:18, fontWeight:'bold', letterSpacing:0.5 },
-  innerSpiral:{ position:'absolute', width:60, height:60, borderWidth:1, borderColor:SPIRAL_COLOR, borderRadius:4 }
+  container: { flex: 1, backgroundColor: PRIMARY_GREEN, alignItems: 'center', paddingTop: Platform.OS === 'android' ? 30 : 0 },
+  backgroundContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', zIndex: 1 },
+  animatedOrnamentSquare: { position: 'absolute', borderWidth: 1, borderColor: DARK_OVERLAY, backgroundColor: 'transparent', borderRadius: 5 },
+  topContentWrapper: { width: '100%', height: height * 0.4, justifyContent: 'center', alignItems: 'center', paddingTop: 40, zIndex: 10 },
+  appIcon: { marginBottom: 10 },
+  heroTitle: { fontSize: 26, fontWeight: 'bold', color: OFF_WHITE, marginBottom: 5, textAlign: 'center' },
+  heroSubtitle: { fontSize: 16, color: LIGHT_GREY, opacity: 0.9, textAlign: 'center' },
+  floatingCard: {
+    width: width * 0.88,
+    backgroundColor: OFF_WHITE,
+    borderRadius: 25,
+    paddingHorizontal: 30,
+    paddingVertical: 55,
+    alignItems: 'center',
+    marginTop: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 15,
+    zIndex: 15,
+  },
+  cardTitle: { fontSize: 22, fontWeight: 'bold', color: PRIMARY_GREEN, marginBottom: 30, textAlign: 'center' },
+  button: {
+    backgroundColor: PRIMARY_GREEN,
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: PRIMARY_GREEN,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  buttonText: { color: OFF_WHITE, fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
+  signupButton: { backgroundColor: OFF_WHITE, borderWidth: 2, borderColor: PRIMARY_GREEN, shadowColor: LIGHT_GREY, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
+  signupButtonText: { color: PRIMARY_GREEN, fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
+  innerSpiral: { position: 'absolute', width: 60, height: 60, borderWidth: 1, borderColor: SPIRAL_COLOR, borderRadius: 4 },
 });

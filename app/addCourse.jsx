@@ -8,23 +8,28 @@ export default function AddCourse() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [duration, setDuration] = useState('');
+  const [organisation, setOrganisation] = useState('');
   const [status, setStatus] = useState('active');
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
-    if (!title || !description) {
+    if (!title || !description || !duration || !organisation) {
       Alert.alert('Error', 'Please fill all fields');
       return;
     }
     setLoading(true);
     try {
       const user = auth.currentUser;
+      const { Timestamp } = await import('firebase/firestore');
       await addDoc(collection(db, 'courses'), {
         title,
         description,
+        duration,
+        organisation,
         status,
         mentorId: user.uid,
-        createdAt: new Date().toISOString(),
+        createdAt: Timestamp.now(),
       });
       Alert.alert('Success', 'Course added!');
       router.replace('/mentor');
@@ -49,6 +54,18 @@ export default function AddCourse() {
         value={description}
         onChangeText={setDescription}
         multiline
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Duration (e.g. 6 weeks)"
+        value={duration}
+        onChangeText={setDuration}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Organisation"
+        value={organisation}
+        onChangeText={setOrganisation}
       />
       <TextInput
         style={styles.input}

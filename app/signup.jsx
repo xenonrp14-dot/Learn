@@ -1,16 +1,26 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Dimensions,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Dimensions } from 'react-native';
 import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 
-// Get screen height for dynamic styling
+// Get screen height
 const { height } = Dimensions.get('window');
 
-// --- NEW COLOR PALETTE ---
+// --- COLOR PALETTE ---
 const PRIMARY_GREEN = '#1D4A3D';
 const ACCENT_GREY = '#6B7280';
 const LIGHT_GREY = '#F0F4F7';
@@ -21,6 +31,7 @@ export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('student');
+  const [organization, setOrganization] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
@@ -28,6 +39,10 @@ export default function Signup() {
   const handleSignup = async () => {
     if (!fullName || !email || !password) {
       Alert.alert('Error', 'Please enter your full name, email, and password');
+      return;
+    }
+    if (role === 'mentor' && !organization.trim()) {
+      Alert.alert('Error', 'Please enter your organization');
       return;
     }
     setLoading(true);
@@ -38,6 +53,7 @@ export default function Signup() {
         fullName,
         email,
         role,
+        organization: role === 'mentor' ? organization : '',
         status: role === 'mentor' ? 'waitlisted' : 'approved',
       });
       Alert.alert('Registration Successful', 'Your account has been created. Please login.');
@@ -52,17 +68,19 @@ export default function Signup() {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 80}
     >
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.topSection}>
           {/* Back Arrow */}
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" size={24} color={PRIMARY_GREEN} />
           </TouchableOpacity>
+
           {/* Illustration and Text */}
           <View style={styles.illustrationContainer}>
             <Text style={styles.title}>Join Us</Text>
@@ -70,7 +88,40 @@ export default function Signup() {
           </View>
         </View>
 
-        <View style={styles.bottomCard}>
+        {/* Bottom Card */}
+  <View style={styles.bottomCard}>
+          <Text style={styles.label}>Registering as</Text>
+
+          <View style={styles.roleSwitchContainer}>
+            <TouchableOpacity
+              style={[styles.roleOption, role === 'student' && styles.roleOptionSelected]}
+              onPress={() => setRole('student')}
+            >
+              <MaterialCommunityIcons
+                name="account"
+                size={22}
+                color={role === 'student' ? PRIMARY_GREEN : ACCENT_GREY}
+              />
+              <Text style={[styles.roleText, role === 'student' && styles.roleTextSelected]}>
+                Student
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.roleOption, role === 'mentor' && styles.roleOptionSelected]}
+              onPress={() => setRole('mentor')}
+            >
+              <MaterialCommunityIcons
+                name="school"
+                size={22}
+                color={role === 'mentor' ? PRIMARY_GREEN : ACCENT_GREY}
+              />
+              <Text style={[styles.roleText, role === 'mentor' && styles.roleTextSelected]}>
+                Mentor
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.label}>Full Name</Text>
           <TextInput
             style={styles.input}
@@ -93,6 +144,19 @@ export default function Signup() {
           />
 
           <Text style={styles.label}>Password</Text>
+          {role === 'mentor' && (
+            <>
+              <Text style={styles.label}>Organization</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Your Organization"
+                value={organization}
+                onChangeText={setOrganization}
+                autoCapitalize="words"
+                placeholderTextColor={ACCENT_GREY}
+              />
+            </>
+          )}
           <View style={{ position: 'relative' }}>
             <TextInput
               style={styles.input}
@@ -115,16 +179,20 @@ export default function Signup() {
           </View>
 
           {/* Sign Up Button */}
-          <TouchableOpacity style={[styles.button, {marginTop: 10}]} onPress={handleSignup} disabled={loading}>
+          <TouchableOpacity
+            style={[styles.button, { marginTop: 10 }]}
+            onPress={handleSignup}
+            disabled={loading}
+          >
             <Text style={styles.buttonText}>{loading ? 'Creating...' : 'Sign Up'}</Text>
           </TouchableOpacity>
 
           {/* Login Navigation Link */}
           <TouchableOpacity style={styles.switchButton} onPress={() => router.replace('/login')}>
-              <Text style={styles.switchText}>
-                Already have an account? <Text style={styles.loginText}>Login</Text>
-              </Text>
-            </TouchableOpacity>
+            <Text style={styles.switchText}>
+              Already have an account? <Text style={styles.loginText}>Login</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -136,8 +204,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: OFF_WHITE,
   },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingBottom: 40, // ensures last field visible
+  },
   topSection: {
-    height: height * 0.40,
+    height: height * 0.4,
     backgroundColor: PRIMARY_GREEN,
     justifyContent: 'flex-start',
     alignItems: 'center',
@@ -173,20 +246,49 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   bottomCard: {
-    position: 'absolute',
-    bottom: 0,
-    width: '100%',
-    height: height * 0.70,
     backgroundColor: OFF_WHITE,
     borderTopLeftRadius: 50,
     borderTopRightRadius: 50,
     paddingHorizontal: 30,
     paddingVertical: 40,
+    marginTop: -40, // overlaps smoothly with green area
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 5,
+  },
+  roleSwitchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+    marginTop: 2,
+    backgroundColor: LIGHT_GREY,
+    borderRadius: 12,
+    padding: 6,
+  },
+  roleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  roleOptionSelected: {
+    backgroundColor: '#e0f7ef',
+    borderColor: PRIMARY_GREEN,
+    borderWidth: 1,
+  },
+  roleText: {
+    marginLeft: 8,
+    color: ACCENT_GREY,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  roleTextSelected: {
+    color: PRIMARY_GREEN,
+    fontWeight: 'bold',
   },
   label: {
     fontSize: 14,

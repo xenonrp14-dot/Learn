@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Dimensions } from 'react-native';
 import { auth, db } from '../firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 
@@ -44,6 +44,20 @@ export default function Login() {
       Alert.alert('Login Error', error.message);
     }
     setLoading(false);
+  };
+
+  // Forgot Password handler
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('Reset Password', 'Please enter your email address above first.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert('Reset Password', 'A password reset link has been sent to your email.');
+    } catch (error) {
+      Alert.alert('Reset Password Error', error.message);
+    }
   };
 
   return (
@@ -103,7 +117,7 @@ export default function Login() {
             </View>
 
           {/* Forgot Password Link */}
-          <TouchableOpacity style={styles.forgotPasswordButton}>
+          <TouchableOpacity style={styles.forgotPasswordButton} onPress={handleForgotPassword}>
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
 

@@ -42,6 +42,9 @@ const ACCENT_GOLD = '#FBBF24';
 const LIGHT_GREY = '#F0F4F7';
 
 export default function MentorDashboard() {
+  const [showEnrolledModal, setShowEnrolledModal] = useState(false);
+  const [enrolledCourse, setEnrolledCourse] = useState(null);
+  const [users, setUsers] = useState([]);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('courses');
   const [status, setStatus] = useState(null);
@@ -51,6 +54,8 @@ export default function MentorDashboard() {
   const [editingCourseId, setEditingCourseId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editDuration, setEditDuration] = useState('');
+  const [editOrganisation, setEditOrganisation] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [courseStats, setCourseStats] = useState({});
   const [notifications, setNotifications] = useState([]);
@@ -98,15 +103,18 @@ export default function MentorDashboard() {
       setCourses(data);
       setCoursesLoading(false);
 
+      // Fetch all users and store in state
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const allUsers = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsers(allUsers);
+
       // Calculate notifications
       const stats = {};
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const users = usersSnap.docs.map(doc => doc.data());
       const notificationsArr = [];
       data.forEach(course => {
         let requests = 0;
         let enrolled = 0;
-        users.forEach(user => {
+        allUsers.forEach(user => {
           if (Array.isArray(user.enrolled)) {
             user.enrolled.forEach(e => {
               if (e.id === course.id) {
@@ -140,15 +148,22 @@ export default function MentorDashboard() {
   };
 
   const handleEditCourse = course => {
-    setEditingCourseId(course.id);
-    setEditTitle(course.title);
-    setEditDesc(course.description);
+  setEditingCourseId(course.id);
+  setEditTitle(course.title);
+  setEditDesc(course.description);
+  setEditDuration(course.duration || '');
+  setEditOrganisation(course.organisation || '');
   };
 
   const handleSaveEdit = async () => {
     setSavingEdit(true);
-    await updateDoc(doc(db, 'courses', editingCourseId), { title: editTitle, description: editDesc });
-    setCourses(courses.map(c => (c.id === editingCourseId ? { ...c, title: editTitle, description: editDesc } : c)));
+    await updateDoc(doc(db, 'courses', editingCourseId), {
+      title: editTitle,
+      description: editDesc,
+      duration: editDuration,
+      organisation: editOrganisation,
+    });
+    setCourses(courses.map(c => (c.id === editingCourseId ? { ...c, title: editTitle, description: editDesc, duration: editDuration, organisation: editOrganisation } : c)));
     setEditingCourseId(null);
     setSavingEdit(false);
   };
@@ -240,14 +255,6 @@ export default function MentorDashboard() {
                   Notifications
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('analytics')}>
-                <MaterialCommunityIcons
-                  name="chart-bar"
-                  size={28}
-                  color={activeTab === 'analytics' ? ACCENT_GOLD : LIGHT_GREY}
-                />
-                <Text style={[styles.tabText, activeTab === 'analytics' && styles.tabTextActive]}>Analytics</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.tabItem} onPress={handleSignOut}>
                 <MaterialCommunityIcons name="logout" size={28} color={LIGHT_GREY} />
                 <Text style={styles.tabText}>Logout</Text>
@@ -266,6 +273,15 @@ export default function MentorDashboard() {
                 ) : (
                   courses.map(course => (
                     <View key={course.id} style={styles.courseCard}>
+                      {/* Delete button in top right */}
+                      {editingCourseId !== course.id && (
+                        <TouchableOpacity
+                          style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, backgroundColor: '#d63031', borderRadius: 18, paddingVertical: 6, paddingHorizontal: 16 }}
+                          onPress={() => handleDeleteCourse(course.id)}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Delete</Text>
+                        </TouchableOpacity>
+                      )}
                       {editingCourseId === course.id ? (
                         <>
                           <TextInput
@@ -279,6 +295,18 @@ export default function MentorDashboard() {
                             value={editDesc}
                             onChangeText={setEditDesc}
                             placeholder="Course Description"
+                          />
+                          <TextInput
+                            style={styles.input}
+                            value={editDuration}
+                            onChangeText={setEditDuration}
+                            placeholder="Duration (e.g. 6 weeks)"
+                          />
+                          <TextInput
+                            style={styles.input}
+                            value={editOrganisation}
+                            onChangeText={setEditOrganisation}
+                            placeholder="Organisation"
                           />
                           <TouchableOpacity style={styles.saveButton} onPress={handleSaveEdit} disabled={savingEdit}>
                             <Text style={styles.editText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
@@ -299,14 +327,20 @@ export default function MentorDashboard() {
                             <TouchableOpacity style={styles.editButton} onPress={() => handleEditCourse(course)}>
                               <Text style={styles.editText}>Edit</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteCourse(course.id)}>
-                              <Text style={styles.deleteText}>Delete</Text>
-                            </TouchableOpacity>
                             <TouchableOpacity
                               style={styles.requestButton}
                               onPress={() => router.push(`/courseRequests/${course.id}`)}
                             >
                               <Text style={styles.requestText}>Requests</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.requestButton, { backgroundColor: ACCENT_GOLD, marginLeft: 8 }]}
+                              onPress={() => {
+                                setEnrolledCourse(course);
+                                setShowEnrolledModal(true);
+                              }}
+                            >
+                              <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15 }}>Enrolled</Text>
                             </TouchableOpacity>
                           </View>
                         </>
@@ -314,6 +348,73 @@ export default function MentorDashboard() {
                     </View>
                   ))
                 )}
+      {/* Enrolled Students Modal */}
+      {showEnrolledModal && enrolledCourse && (
+        <View style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.35)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+        }}>
+          <View style={{
+            backgroundColor: '#fff',
+            borderRadius: 18,
+            padding: 24,
+            width: '95%',
+            maxWidth: 500,
+            minHeight: 320,
+            maxHeight: '80%',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.2,
+            shadowRadius: 8,
+            elevation: 8,
+            display: 'flex',
+          }}>
+            <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+              <Text style={{ fontSize: 24, fontWeight: 'bold', color: PRIMARY_GREEN, marginBottom: 14, textAlign: 'center' }}>{enrolledCourse.title} - Enrolled Students</Text>
+              {/* Find enrolled students for this course */}
+              {(() => {
+                const enrolledUsers = [];
+                users.forEach(u => {
+                  if (Array.isArray(u.enrolled)) {
+                    u.enrolled.forEach(e => {
+                      if (e.id === enrolledCourse.id && e.status === 'enrolled') {
+                        enrolledUsers.push(u);
+                      }
+                    });
+                  }
+                });
+                if (enrolledUsers.length === 0) {
+                  return <Text style={{ color: '#333', fontSize: 16, textAlign: 'center', marginTop: 20 }}>No students enrolled yet.</Text>;
+                }
+                return enrolledUsers.map((student, idx) => (
+                  <View key={student.id || idx} style={{ backgroundColor: OFF_WHITE, borderRadius: 12, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 }}>
+                    <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15, marginBottom: 4 }}>Student</Text>
+                    <Text style={{ color: '#333', fontSize: 15 }}>Name: {student.fullName || student.name || 'N/A'}</Text>
+                    <Text style={{ color: '#333', fontSize: 15 }}>Email: {student.email || 'N/A'}</Text>
+                    <Text style={{ color: '#333', fontSize: 15 }}>Organisation: {student.organisation || 'N/A'}</Text>
+                  </View>
+                ));
+              })()}
+            </ScrollView>
+            <TouchableOpacity style={{
+              backgroundColor: PRIMARY_GREEN,
+              borderRadius: 12,
+              paddingVertical: 12,
+              marginTop: 18,
+              alignItems: 'center',
+            }} onPress={() => setShowEnrolledModal(false)}>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
               </ScrollView>
             )}
 
@@ -322,7 +423,12 @@ export default function MentorDashboard() {
                 {notifications.length === 0 ? (
                   <Text style={styles.emptyText}>No notifications.</Text>
                 ) : (
-                  notifications.map((n, idx) => <Text key={idx} style={styles.notificationText}>{n.text}</Text>)
+                  notifications.map((n, idx) => (
+                    <View key={idx} style={{ backgroundColor: OFF_WHITE, borderRadius: 12, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 }}>
+                      <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15, marginBottom: 4 }}>Notification</Text>
+                      <Text style={{ color: '#333', fontSize: 15 }}>{n.text}</Text>
+                    </View>
+                  ))
                 )}
               </ScrollView>
             )}
