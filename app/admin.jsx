@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Alert,
+  TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase';
@@ -18,7 +19,6 @@ import { useRouter } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
-// Animation setup
 const NUM_STARS = 20;
 const STAR_DATA = Array.from({ length: NUM_STARS }).map(() => ({
   top: Math.random() * height,
@@ -55,6 +55,9 @@ export default function AdminDashboard() {
   const [userToDelete, setUserToDelete] = useState(null);
   const [showCourseDeleteConfirm, setShowCourseDeleteConfirm] = useState(false);
   const [courseToDelete, setCourseToDelete] = useState(null);
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const contentOpacity = useRef(new Animated.Value(0)).current;
 
@@ -114,6 +117,29 @@ export default function AdminDashboard() {
     ],
   });
 
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  // Memoized filtered arrays
+  const filteredUsers = useMemo(() => {
+    const lower = debouncedSearch.toLowerCase();
+    return users.filter(u =>
+      (u.fullName || u.name || '').toLowerCase().includes(lower) ||
+      (u.email || '').toLowerCase().includes(lower)
+    );
+  }, [debouncedSearch, users]);
+
+  const filteredCourses = useMemo(() => {
+    const lower = debouncedSearch.toLowerCase();
+    return courses.filter(c =>
+      (c.title || '').toLowerCase().includes(lower) ||
+      (c.description || '').toLowerCase().includes(lower)
+    );
+  }, [debouncedSearch, courses]);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -123,14 +149,13 @@ export default function AdminDashboard() {
       const userSnapshot = await getDocs(collection(db, 'users'));
       const allUsers = userSnapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setUsers(allUsers.filter((u) => u.status !== 'waitlisted'));
-  const pending = allUsers.filter((u) => u.role === 'mentor' && u.status !== 'approved' && u.status !== 'disapproved');
+      const pending = allUsers.filter((u) => u.role === 'mentor' && u.status !== 'approved' && u.status !== 'disapproved');
       setPendingMentors(pending);
 
       const courseSnapshot = await getDocs(collection(db, 'courses'));
       const courseList = courseSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setCourses(courseList);
 
-      // Build mentorId -> name map
       const mentorIds = Array.from(new Set(courseList.map(c => c.mentorId).filter(Boolean)));
       const mentorMapObj = {};
       mentorIds.forEach(id => {
@@ -219,14 +244,28 @@ export default function AdminDashboard() {
             </TouchableOpacity>
           </View>
 
-          {/* Users */}
+          {/* Users Tab */}
           {activeTab === 'users' && (
             <View style={{ flex: 1 }}>
+              <TextInput
+                placeholder="Search Users..."
+                placeholderTextColor={LIGHT_GREY}
+                value={search}
+                onChangeText={setSearch}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  borderRadius: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  color: OFF_WHITE,
+                  marginBottom: 12,
+                }}
+              />
               <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-                {users.length === 0 ? (
+                {filteredUsers.length === 0 ? (
                   <Text style={styles.emptyText}>No users found.</Text>
                 ) : (
-                  users.map((u) => (
+                  filteredUsers.map((u) => (
                     <View key={u.id} style={styles.userCard}>
                       <Text style={styles.userName}>{u.fullName || u.name || 'No Name'}</Text>
                       <Text style={styles.userRole}>Role: {u.role}</Text>
@@ -246,8 +285,7 @@ export default function AdminDashboard() {
                   ))
                 )}
               </ScrollView>
-
-              {/* Confirm delete user */}
+              {/* User delete confirmation modal (unchanged) */}
               {showUserDeleteConfirm && userToDelete && (
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, justifyContent: 'center', alignItems: 'center' }}>
                   <View style={{ backgroundColor: OFF_WHITE, borderRadius: 16, padding: 24, width: '80%' }}>
@@ -295,14 +333,28 @@ export default function AdminDashboard() {
             </View>
           )}
 
-          {/* Courses */}
+          {/* Courses Tab */}
           {activeTab === 'courses' && (
             <View style={{ flex: 1 }}>
+              <TextInput
+                placeholder="Search Courses..."
+                placeholderTextColor={LIGHT_GREY}
+                value={search}
+                onChangeText={setSearch}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  borderRadius: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  color: OFF_WHITE,
+                  marginBottom: 12,
+                }}
+              />
               <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-                {courses.length === 0 ? (
+                {filteredCourses.length === 0 ? (
                   <Text style={styles.emptyText}>No courses found.</Text>
                 ) : (
-                  courses.map((course) => (
+                  filteredCourses.map((course) => (
                     <View key={course.id} style={styles.userCard}>
                       <Text style={styles.userName}>{course.title || 'No Title'}</Text>
                       <Text style={styles.userStatus}>Description: {course.description || 'N/A'}</Text>
@@ -323,8 +375,7 @@ export default function AdminDashboard() {
                   ))
                 )}
               </ScrollView>
-
-              {/* Confirm delete course */}
+              {/* Course delete confirmation modal (unchanged) */}
               {showCourseDeleteConfirm && courseToDelete && (
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, justifyContent: 'center', alignItems: 'center' }}>
                   <View style={{ backgroundColor: OFF_WHITE, borderRadius: 16, padding: 24, width: '80%' }}>
@@ -365,7 +416,7 @@ export default function AdminDashboard() {
             </View>
           )}
 
-          {/* Pending Mentors */}
+          {/* Pending Mentors Tab */}
           {activeTab === 'pending' && (
             <View style={{ flex: 1 }}>
               <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>

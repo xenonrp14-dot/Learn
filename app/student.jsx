@@ -1,428 +1,580 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Dimensions, ScrollView, Animated } from 'react-native';
+// app/student-dashboard.jsx
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Dimensions,
+  ScrollView,
+  Animated,
+  Modal,
+  Pressable,
+  Platform,
+} from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { db, auth } from '../firebase';
-import { collection, getDocs, updateDoc, arrayUnion, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
-// Theme colors
-const PRIMARY_GREEN = '#1D4A3D';
-const LIGHT_GREY = '#F0F4F7';
-const OFF_WHITE = '#FAFAFA';
-const ACCENT_GOLD = '#FBBF24';
+const COLORS = {
+  PRIMARY_GREEN: '#0B3B2E',
+  ACCENT: '#14B8A6',
+  GOLD: '#FBBF24',
+  OFF_WHITE: '#FAFAFA',
+  CARD_START: '#053025',
+  CARD_END: '#0D9488',
+  STAR: '#E6F7FF',
+  BG: '#07110D',
+};
 
-// Stars & particles
-const NUM_STARS = 20;
-const STAR_DATA = Array.from({ length: NUM_STARS }).map(() => ({
-  top: Math.random() * height,
-  left: Math.random() * width,
-  opacity: 0.2 + Math.random() * 0.4,
-  size: 2 + Math.random() * 3,
-  duration: 15000 + Math.random() * 15000,
-}));
-
-const NUM_PARTICLES = 12;
-const PARTICLE_DATA = Array.from({ length: NUM_PARTICLES }).map(() => ({
-  top: Math.random() * height,
-  left: Math.random() * width,
-  size: 20 + Math.random() * 40,
-  duration: 20000 + Math.random() * 20000,
-}));
+const STAR_COUNT = 26;
+const PARTICLE_COUNT = 10;
 
 export default function StudentDashboard() {
-  const [activeTab, setActiveTab] = useState('courses');
+  const router = useRouter();
+
   const [allCourses, setAllCourses] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [search, setSearch] = useState('');
-  const [enrollingId, setEnrollingId] = useState(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
-  const [detailsCourseId, setDetailsCourseId] = useState(null);
 
-  const router = useRouter();
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [confirmStep, setConfirmStep] = useState(false);
+  const [activeTab, setActiveTab] = useState('courses');
+
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+
+  // Withdraw two-step
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
+  const [withdrawConfirmStep, setWithdrawConfirmStep] = useState(false);
+  const [withdrawTarget, setWithdrawTarget] = useState(null);
+
   const contentOpacity = useRef(new Animated.Value(1)).current;
 
-  const starAnims = useRef(STAR_DATA.map(() => new Animated.Value(Math.random()))).current;
-  const particleAnims = useRef(PARTICLE_DATA.map(() => new Animated.Value(0))).current;
+  const stars = useRef(
+    Array.from({ length: STAR_COUNT }).map(() => ({
+      x: Math.random() * width,
+      yBase: Math.random() * (height * 0.6),
+      size: 0.8 + Math.random() * 2.4,
+      twinkle: new Animated.Value(Math.random()),
+      drift: new Animated.Value(Math.random() * 2 - 1),
+      speed: 8000 + Math.random() * 9000,
+    }))
+  ).current;
 
-  // Animate stars
+  const particles = useRef(
+    Array.from({ length: PARTICLE_COUNT }).map(() => ({
+      x: Math.random() * width,
+      y: Math.random() * height * 0.8,
+      size: 12 + Math.random() * 36,
+      anim: new Animated.Value(Math.random()),
+      duration: 9000 + Math.random() * 9000,
+    }))
+  ).current;
+
+  // Debounce search input
   useEffect(() => {
-    starAnims.forEach((anim, idx) => {
-      Animated.loop(
+    const handler = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  useEffect(() => {
+    stars.forEach((s) => {
+      const twinkleLoop = () => {
         Animated.sequence([
-          Animated.timing(anim, { toValue: 1, duration: STAR_DATA[idx].duration, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 0, duration: STAR_DATA[idx].duration, useNativeDriver: true }),
-        ])
-      ).start();
+          Animated.timing(s.twinkle, { toValue: 0.2 + Math.random() * 0.8, duration: 600 + Math.random() * 1400, useNativeDriver: true }),
+          Animated.timing(s.twinkle, { toValue: 0.2 + Math.random() * 0.8, duration: 600 + Math.random() * 1400, useNativeDriver: true }),
+        ]).start(twinkleLoop);
+      };
+      twinkleLoop();
+
+      const driftLoop = () => {
+        s.drift.setValue(-1);
+        Animated.timing(s.drift, { toValue: 1, duration: s.speed, useNativeDriver: true }).start(driftLoop);
+      };
+      driftLoop();
+    });
+
+    particles.forEach((p) => {
+      const float = () => {
+        Animated.sequence([
+          Animated.timing(p.anim, { toValue: 1, duration: p.duration, useNativeDriver: true }),
+          Animated.timing(p.anim, { toValue: 0, duration: p.duration, useNativeDriver: true }),
+        ]).start(float);
+      };
+      float();
     });
   }, []);
 
-  // Animate gradient particles
   useEffect(() => {
-    particleAnims.forEach((anim, idx) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(anim, { toValue: 1, duration: PARTICLE_DATA[idx].duration, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 0, duration: PARTICLE_DATA[idx].duration, useNativeDriver: true }),
-        ])
-      ).start();
-    });
+    const fetchAll = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'courses'));
+        const courses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setAllCourses(courses);
+
+        const user = auth.currentUser;
+        if (user) {
+          const udoc = await getDoc(doc(db, 'users', user.uid));
+          if (udoc.exists()) setPrograms(udoc.data().enrolled || []);
+        } else {
+          setPrograms([]);
+        }
+      } catch (err) {
+        console.warn('fetch error', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
   }, []);
 
-  useEffect(() => {
-    const fetchCourses = async () => {
-      const snapshot = await getDocs(collection(db, 'courses'));
-      setAllCourses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    };
-
-    const fetchPrograms = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
-
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) setPrograms(userDoc.data().enrolled || []);
-      setLoading(false);
-    };
-
-    fetchCourses();
-    fetchPrograms();
-  }, []);
-
-  const showMessage = (text) => {
-    setMessage(text);
+  const showMessage = (t) => {
+    setMessage(t);
     setTimeout(() => setMessage(null), 3000);
   };
 
   const handleEnroll = async (course) => {
-    setEnrollingId(course.id);
+    const user = auth.currentUser;
+    if (!user) return showMessage('Please log in again.');
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        enrolled: arrayUnion({ title: course.title, status: 'requested', id: course.id, requestedAt: Date.now() })
+      });
+      setPrograms(prev => [...prev, { title: course.title, status: 'requested', id: course.id }]);
+      showMessage(`Request sent for ${course.title}`);
+    } catch (err) {
+      console.warn(err);
+      showMessage('Failed to request enrollment.');
+    }
+  };
+
+  const withdrawRequest = async (item) => {
     const user = auth.currentUser;
     if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    const udoc = await getDoc(userRef);
+    if (!udoc.exists()) return;
+    const enrolledArr = udoc.data().enrolled || [];
+    const filtered = enrolledArr.filter(e => !(e.id === item.id && e.status === 'requested'));
+    await updateDoc(userRef, { enrolled: filtered });
+    setPrograms(filtered);
+    showMessage('Request withdrawn.');
+  };
 
-    const already = programs.find(p => p.id === course.id);
-    if (already) {
-      if (already.status === 'rejected') {
-        const now = Date.now();
-        const rejectedAt = already.rejectedAt ? new Date(already.rejectedAt).getTime() : 0;
-        if (now - rejectedAt < 2 * 24 * 60 * 60 * 1000) {
-          showMessage('Request rejected recently. Wait 2 days to reapply.');
-          setEnrollingId(null);
-          return;
-        }
-      } else {
-        showMessage(`Already ${already.status}.`);
-        setEnrollingId(null);
-        return;
-      }
+  const openWithdrawConfirm = (item) => {
+    setWithdrawTarget(item);
+    setWithdrawConfirmStep(false);
+    setWithdrawConfirmOpen(true);
+  };
+
+  const confirmWithdraw = async () => {
+    if (!withdrawTarget) return;
+    try {
+      await withdrawRequest(withdrawTarget);
+    } catch (e) {
+      console.warn(e);
+      showMessage('Failed to withdraw.');
+    } finally {
+      setWithdrawConfirmOpen(false);
+      setWithdrawTarget(null);
+      setWithdrawConfirmStep(false);
     }
+  };
 
-    await updateDoc(doc(db, 'users', user.uid), {
-      enrolled: arrayUnion({ title: course.title, status: 'requested', id: course.id })
+  const openLogout = () => {
+    setLogoutOpen(true);
+    setConfirmStep(false);
+  };
+
+  const doLogout = async () => {
+    try {
+      await signOut(auth);
+      setLogoutOpen(false);
+      router.replace('/login');
+    } catch (err) {
+      console.warn(err);
+      showMessage('Logout failed.');
+      setLogoutOpen(false);
+    }
+  };
+
+  const handleTab = (tab) => {
+    if (tab === activeTab) return;
+    Animated.timing(contentOpacity, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
+      setActiveTab(tab);
+      Animated.timing(contentOpacity, { toValue: 1, duration: 210, useNativeDriver: true }).start();
     });
-
-    setPrograms([...programs, { title: course.title, status: 'requested', id: course.id }]);
-    setEnrollingId(null);
-    showMessage(`Request sent for ${course.title}!`);
   };
 
-  const handleSignOut = async () => {
-    await signOut(auth);
-    router.replace('/login');
-  };
-
-  const getStatusDisplay = (courseId) => {
-    const p = programs.find(p => p.id === courseId);
+  const getStatus = (courseId) => {
+    const p = programs.find(x => x.id === courseId);
     if (!p) return 'Request';
-    switch (p.status) {
-      case 'requested': return 'Requested';
-      case 'enrolled': return 'Enrolled';
-      case 'rejected': return 'Re-Apply';
-      default: return 'Request';
-    }
+    return p.status;
   };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'enrolled': return '#10B981';
-      case 'requested': return ACCENT_GOLD;
+      case 'requested': return COLORS.GOLD;
       case 'rejected': return '#EF4444';
-      default: return PRIMARY_GREEN;
+      default: return COLORS.ACCENT;
     }
   };
 
-  const renderCourseCard = (item, isProgramView = false) => {
-    const status = isProgramView ? item.status : getStatusDisplay(item.id);
-    const isEnrolled = status === 'Enrolled';
-    const isRejected = status === 'Re-Apply';
-    const isRequested = status === 'Requested';
-    const isDisabled = enrollingId === item.id || isEnrolled || isRequested;
+  const formatDate = (val) => {
+    if (!val) return 'N/A';
+    try {
+      // Firestore Timestamp object
+      if (val.toDate && typeof val.toDate === 'function') return val.toDate().toLocaleString();
+      // Firestore Timestamp-like { seconds }
+      if (val.seconds) return new Date(val.seconds * 1000).toLocaleString();
+      // JS Date or number
+      if (val instanceof Date) return val.toLocaleString();
+      if (typeof val === 'number') return new Date(val).toLocaleString();
+      return String(val);
+    } catch (e) {
+      return 'N/A';
+    }
+  };
 
-    let buttonText = status;
-    if (enrollingId === item.id) buttonText = 'Processing...';
-    if (isProgramView && status === 'requested') buttonText = 'Requested';
-    if (isProgramView && status === 'enrolled') buttonText = 'View Course';
-    if (isProgramView && status === 'rejected') buttonText = 'Re-Apply';
+  const CourseCard = ({ item, isProgramView = false }) => {
+    const status = isProgramView ? item.status : getStatus(item.id);
+    const isRequested = status === 'requested';
+    const isEnrolled = status === 'enrolled';
+    const isDisabled = isEnrolled || (status !== 'Request' && !isProgramView);
+
+    const scale = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.01, duration: 600, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ]).start();
+    }, []);
 
     return (
-      <Animated.View key={item.id || item.title} style={{ opacity: contentOpacity, marginBottom: 12 }}>
-        <View style={styles.courseCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.courseTitle}>{item.title}</Text>
-            {!isProgramView && <Text style={[styles.courseStatusBadge, { color: getStatusColor(item.status || 'Active'), borderColor: getStatusColor(item.status || 'Active') }]}>{item.status || 'Active'}</Text>}
+      <Animated.View style={{ transform: [{ scale }], marginBottom: 14 }}>
+        <LinearGradient
+          colors={['rgba(8,30,25,0.32)', 'rgba(13,148,136,0.12)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.premiumCard}
+        >
+          <View style={styles.cardTop}>
+            <Text numberOfLines={2} style={styles.premiumTitle}>{item.title}</Text>
+            {/* top-right small badge removed to avoid duplicate status display */}
+            <View style={{ width: 0 }} />
           </View>
-          <View style={styles.divider} />
-          <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}>
+
+          {/* DESCRIPTION REMOVED in card as requested */}
+
+          {/* Compact footer: Status (glassStat style) -> Request/Withdraw -> Details */}
+          <View style={[styles.premiumFooter, { justifyContent: 'flex-start', gap: 10 }]}>
+            {/* Status box (using existing glassStat style) */}
+            <View style={[styles.glassStat, { borderColor: getStatusColor(status), marginRight: 8 }]}>
+              <Text style={styles.glassStatLabel}>Status</Text>
+              <Text style={[styles.glassStatValue, { color: getStatusColor(status) }]}>{status}</Text>
+            </View>
+
+            {/* Request / Withdraw Button */}
+            {isProgramView && isRequested ? (
+              <TouchableOpacity style={styles.withdrawBtn} onPress={() => openWithdrawConfirm(item)}>
+                <Text style={styles.withdrawText}>Withdraw</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.enrollBtn, isDisabled && styles.enrollDisabled]}
+                onPress={() => isProgramView && isEnrolled ? showMessage('Open course...') : handleEnroll(item)}
+                disabled={isDisabled}
+              >
+                <Text style={styles.enrollBtnText}>
+                  {isProgramView ? (isEnrolled ? 'Enrolled' : (isRequested ? 'Requested' : 'View')) : (isDisabled ? 'Requested' : 'Request')}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Details Button */}
             <TouchableOpacity
-              style={[styles.enrollButton, isEnrolled && styles.enrolledButton, isRequested && styles.requestedButton]}
-              disabled={isDisabled && !isRejected}
-              onPress={() => isProgramView && isEnrolled ? showMessage('Navigating to course...') : handleEnroll(item)}
+              style={styles.detailsBtn}
+              onPress={() => {
+                setSelectedCourse(item);
+                setDetailsModalOpen(true);
+              }}
             >
-              <Text style={[styles.enrollText, isEnrolled && styles.enrolledText, isRequested && styles.requestedText]}>
-                {buttonText}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.detailsButton}
-              onPress={() => setDetailsCourseId(item.id)}
-            >
-              <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15 }}>Details</Text>
+              <Text style={styles.detailsBtnText}>Details</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </LinearGradient>
       </Animated.View>
     );
   };
 
-  const starAnimatedStyle = (star, idx) => ({
-    position: 'absolute',
-    top: star.top,
-    left: star.left,
-    width: star.size,
-    height: star.size,
-    borderRadius: star.size > 4 ? 3 : 2,
-    backgroundColor: OFF_WHITE,
-    opacity: starAnims[idx].interpolate({ inputRange: [0,1], outputRange: [0.1, star.opacity] }),
-    transform: [{ translateX: starAnims[idx].interpolate({ inputRange: [0,1], outputRange: [0, Math.random() > 0.5 ? 80 : -80] }) }]
-  });
-
-  const particleAnimatedStyle = (particle, idx) => ({
-    position: 'absolute',
-    top: particle.top,
-    left: particle.left,
-    width: particle.size,
-    height: particle.size,
-    borderRadius: particle.size / 2,
-    backgroundColor: `rgba(255,255,255,0.05)`,
-    opacity: particleAnims[idx].interpolate({ inputRange: [0,1], outputRange: [0.05, 0.25] }),
-    transform: [
-      { translateX: particleAnims[idx].interpolate({ inputRange: [0,1], outputRange: [0, Math.random() > 0.5 ? 60 : -60] }) },
-      { translateY: particleAnims[idx].interpolate({ inputRange: [0,1], outputRange: [0, Math.random() > 0.5 ? 60 : -60] }) }
-    ]
-  });
-
-  const handleTabPress = (newTab) => {
-    if (newTab === activeTab) return;
-    Animated.timing(contentOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-      setActiveTab(newTab);
-      Animated.timing(contentOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
-    });
-  };
+  const coursesList = allCourses.filter(c => c.title?.toLowerCase().includes(debouncedSearch.toLowerCase()));
+  const programsList = programs.filter(p => allCourses.some(c => c.id === p.id));
 
   return (
-    <View style={styles.container}>
-      {/* Stars */}
-      {STAR_DATA.map((star, idx) => (<Animated.View key={idx} style={[starAnimatedStyle(star, idx), { zIndex: 0 }]} />))}
-      {/* Floating particles */}
-      {PARTICLE_DATA.map((particle, idx) => (<Animated.View key={idx} style={[particleAnimatedStyle(particle, idx), { zIndex: 0 }]} />))}
+    <View style={styles.screen}>
+      {/* Background */}
+      <View style={StyleSheet.absoluteFill}>
+        <LinearGradient colors={[COLORS.BG, COLORS.BG]} style={StyleSheet.absoluteFill} />
+        {particles.map((p, i) => {
+          const translateY = p.anim.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] });
+          const translateX = p.anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 6] });
+          return (
+            <Animated.View
+              key={`p-${i}`}
+              style={{
+                position: 'absolute',
+                top: p.y,
+                left: p.x,
+                width: p.size,
+                height: p.size,
+                borderRadius: p.size / 2,
+                backgroundColor: 'rgba(20,184,166,0.06)',
+                transform: [{ translateY }, { translateX }],
+                zIndex: 0,
+              }}
+            />
+          );
+        })}
 
+        {stars.map((s, i) => {
+          const opacity = s.twinkle.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.95] });
+          const driftX = s.drift.interpolate({ inputRange: [-1, 1], outputRange: [-6, 6] });
+          return (
+            <Animated.View
+              key={`star-${i}`}
+              style={{
+                position: 'absolute',
+                top: s.yBase,
+                left: s.x,
+                width: s.size,
+                height: s.size,
+                borderRadius: s.size / 2,
+                backgroundColor: COLORS.STAR,
+                opacity,
+                transform: [{ translateX: driftX }],
+                zIndex: 0,
+              }}
+            />
+          );
+        })}
+      </View>
+
+      {/* Top bar */}
       <View style={styles.topBar}>
-        <Text style={styles.dashboardTitle}>Student Hub</Text>
-        <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/studentProfile')}>
-          <Ionicons name="person-circle-outline" size={30} color={ACCENT_GOLD} />
+        <Text style={styles.title}>Student Hub</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/studentProfile')}>
+            <Ionicons name="person-circle-outline" size={30} color={COLORS.GOLD} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.iconBtn} onPress={openLogout}>
+            <MaterialCommunityIcons name="logout" size={24} color={COLORS.OFF_WHITE || '#fff'} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabRow}>
+        <TouchableOpacity style={[styles.tab, activeTab === 'courses' && styles.tabActive]} onPress={() => handleTab('courses')}>
+          <Text style={[styles.tabText, activeTab === 'courses' && styles.tabTextActive]}>Courses</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tab, activeTab === 'programs' && styles.tabActive]} onPress={() => handleTab('programs')}>
+          <Text style={[styles.tabText, activeTab === 'programs' && styles.tabTextActive]}>My Programs</Text>
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.sectionWrapper, { opacity: contentOpacity }]}>
-        {activeTab === 'courses' && (
-          <View style={styles.section}>
-            <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color={PRIMARY_GREEN} style={{ marginLeft: 10 }} />
-              <TextInput style={styles.input} placeholder="Search All Courses" placeholderTextColor="#6B7280" value={search} onChangeText={setSearch} />
-            </View>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {allCourses.filter(c => c.title.toLowerCase().includes(search.toLowerCase())).map(item => renderCourseCard(item, false))}
-              {allCourses.length === 0 && <Text style={styles.emptyText}>No courses found.</Text>}
-            </ScrollView>
-          </View>
-        )}
+      {/* Search */}
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={18} color={COLORS.ACCENT} style={{ marginLeft: 12 }} />
+        <TextInput
+          placeholder="Search courses..."
+          placeholderTextColor="rgba(255,255,255,0.6)"
+          value={search}
+          onChangeText={setSearch}
+          style={styles.searchInput}
+        />
+      </View>
 
-        {activeTab === 'programs' && (
-          <View style={styles.section}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {loading ? <Text style={styles.emptyText}>Loading enrolled programs...</Text> :
-                programs.length === 0 ? <Text style={styles.emptyText}>You are not yet enrolled in any programs.</Text> :
-                  programs
-                    .filter(item => allCourses.some(course => course.id === item.id))
-                    .map((item) => {
-                      const status = item.status;
-                      const isRequested = status === 'requested';
-                      const course = allCourses.find(c => c.id === item.id);
-                      return (
-                        <Animated.View key={item.id || item.title} style={{ opacity: contentOpacity, marginBottom: 12 }}>
-                          <View style={styles.courseCard}>
-                            <View style={styles.cardHeader}>
-                              <Text style={styles.courseTitle}>{item.title}</Text>
-                              <Text style={[styles.courseStatusBadge, { color: isRequested ? ACCENT_GOLD : getStatusColor(status), borderColor: isRequested ? ACCENT_GOLD : getStatusColor(status) }]}>{status || 'Active'}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}>
-                              {isRequested ? (
-                                <TouchableOpacity
-                                  style={[styles.enrollButton, { backgroundColor: '#EF4444' }]}
-                                  onPress={async () => {
-                                    const user = auth.currentUser;
-                                    if (!user) return;
-                                    setEnrollingId(item.id);
-                                    const userRef = doc(db, 'users', user.uid);
-                                    const userDoc = await getDoc(userRef);
-                                    if (userDoc.exists()) {
-                                      const enrolledArr = userDoc.data().enrolled || [];
-                                      const filtered = enrolledArr.filter(e => !(e.id === item.id && e.status === 'requested'));
-                                      await updateDoc(userRef, { enrolled: filtered });
-                                      setPrograms(filtered);
-                                      showMessage('Request withdrawn.');
-                                    }
-                                    setEnrollingId(null);
-                                  }}
-                                  disabled={enrollingId === item.id}
-                                >
-                                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>Withdraw</Text>
-                                </TouchableOpacity>
-                              ) : (
-                                <TouchableOpacity
-                                  style={[styles.enrollButton, status === 'enrolled' && styles.enrolledButton]}
-                                  disabled={true}
-                                >
-                                  <Text style={[styles.enrollText, status === 'enrolled' && styles.enrolledText]}>
-                                    {status === 'enrolled' ? 'Enrolled' : status}
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
-                              <TouchableOpacity
-                                style={styles.detailsButton}
-                                onPress={() => setDetailsCourseId(item.id)}
-                              >
-                                <Text style={{ color: PRIMARY_GREEN, fontWeight: 'bold', fontSize: 15 }}>Details</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        </Animated.View>
-                      );
-                    })
-              }
-            </ScrollView>
-          </View>
-        )}
+      {/* Content */}
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {activeTab === 'courses' && (
+            <>
+              {coursesList.length === 0 && <Text style={styles.emptyText}>No courses found.</Text>}
+              {coursesList.map(c => <CourseCard key={c.id} item={c} />)}
+            </>
+          )}
+
+          {activeTab === 'programs' && (
+            <>
+              {programsList.length === 0 && <Text style={styles.emptyText}>You are not enrolled in any programs.</Text>}
+              {programsList.map(p => {
+                const course = allCourses.find(c => c.id === p.id) || { title: p.title, description: p.description, duration: p.duration };
+                return <CourseCard key={p.id} item={{ ...course, status: p.status, id: p.id }} isProgramView />;
+              })}
+            </>
+          )}
+        </ScrollView>
       </Animated.View>
 
+      {/* Details Modal (enhanced) */}
+      <Modal visible={detailsModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{selectedCourse?.title}</Text>
+
+            {/* Important mentor-uploaded details */}
+            <Text style={styles.modalSub}>{selectedCourse?.description || 'No description.'}</Text>
+
+            <View style={{ marginTop: 6, marginBottom: 6 }}>
+              <Text style={[styles.modalSub, { fontWeight: '700' }]}>Details</Text>
+              <Text style={styles.modalSub}>Duration: {selectedCourse?.duration || 'N/A'}</Text>
+              <Text style={styles.modalSub}>Organisation: {selectedCourse?.organisation || selectedCourse?.organisation || 'N/A'}</Text>
+              <Text style={styles.modalSub}>Course status: {selectedCourse?.status || 'active'}</Text>
+              <Text style={styles.modalSub}>Created: {formatDate(selectedCourse?.createdAt)}</Text>
+              <Text style={[styles.modalSub, { marginTop: 8 }]}>Your enrollment status: {getStatus(selectedCourse?.id)}</Text>
+            </View>
+
+            <Pressable style={styles.modalBtnPrimary} onPress={() => setDetailsModalOpen(false)}>
+              <Text style={styles.modalBtnPrimaryText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Withdraw two-step modal */}
+      <Modal visible={withdrawConfirmOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {!withdrawConfirmStep ? (
+              <>
+                <Text style={styles.modalTitle}>Withdraw request</Text>
+                <Text style={styles.modalSub}>Are you sure you want to withdraw your request for "{withdrawTarget?.title}"?</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+                  <Pressable style={styles.modalBtnGray} onPress={() => { setWithdrawConfirmOpen(false); setWithdrawTarget(null); }}>
+                    <Text style={styles.modalBtnGrayText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={styles.modalBtnPrimary} onPress={() => setWithdrawConfirmStep(true)}>
+                    <Text style={styles.modalBtnPrimaryText}>Yes, Withdraw</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>One more step</Text>
+                <Text style={styles.modalSub}>Confirm to complete withdrawal.</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+                  <Pressable style={styles.modalBtnGray} onPress={() => setWithdrawConfirmStep(false)}>
+                    <Text style={styles.modalBtnGrayText}>Back</Text>
+                  </Pressable>
+                  <Pressable style={styles.modalBtnPrimary} onPress={confirmWithdraw}>
+                    <Text style={styles.modalBtnPrimaryText}>Confirm</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Toast */}
       {message && (
-        <View style={styles.messageBox}>
-          <Text style={styles.messageText}>{message}</Text>
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{message}</Text>
         </View>
       )}
 
-      <View style={styles.bottomTabs}>
-        <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('courses')}>
-          <MaterialCommunityIcons name="book-open-variant" size={28} color={activeTab === 'courses' ? ACCENT_GOLD : LIGHT_GREY} />
-          <Text style={[styles.tabText, activeTab === 'courses' && styles.tabTextActive]}>Courses</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabItem} onPress={() => handleTabPress('programs')}>
-          <Ionicons name="school" size={28} color={activeTab === 'programs' ? ACCENT_GOLD : LIGHT_GREY} />
-          <Text style={[styles.tabText, activeTab === 'programs' && styles.tabTextActive]}>My Programs</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabItem} onPress={handleSignOut}>
-          <MaterialCommunityIcons name="logout" size={28} color={LIGHT_GREY} />
-          <Text style={styles.tabText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Details Modal for any course */}
-      {detailsCourseId && (() => {
-        const safeCourses = Array.isArray(allCourses) ? allCourses : [];
-        const item = safeCourses.find(c => c.id === detailsCourseId);
-        if (!item) return null;
-        return (
-          <View style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.35)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 9999,
-          }}>
-            <View style={{
-              backgroundColor: '#fff',
-              borderRadius: 18,
-              padding: 24,
-              width: '95%',
-              maxWidth: 500,
-              minHeight: 320,
-              maxHeight: '80%',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 8,
-              elevation: 8,
-              display: 'flex',
-            }}>
-              <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-                <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 12 }}>{item.title}</Text>
-                <Text style={{ fontSize: 16, color: '#333', marginBottom: 8 }}>{item.description || 'No description available.'}</Text>
-                <Text style={{ fontSize: 15, color: PRIMARY_GREEN, marginBottom: 8 }}>Duration: {item.duration || 'N/A'}</Text>
-                <Text style={{ fontSize: 15, color: PRIMARY_GREEN, marginBottom: 8 }}>Organization: {item.organisation || 'N/A'}</Text>
-              </ScrollView>
-              <TouchableOpacity style={{ marginTop: 18, alignSelf: 'center', backgroundColor: PRIMARY_GREEN, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 28 }} onPress={() => setDetailsCourseId(null)}>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>Close</Text>
-              </TouchableOpacity>
-            </View>
+      {/* Logout modal */}
+      <Modal visible={logoutOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {!confirmStep ? (
+              <>
+                <Text style={styles.modalTitle}>Log out</Text>
+                <Text style={styles.modalSub}>Are you sure you want to log out?</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+                  <Pressable style={styles.modalBtnGray} onPress={() => setLogoutOpen(false)}>
+                    <Text style={styles.modalBtnGrayText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={styles.modalBtnPrimary} onPress={() => setConfirmStep(true)}>
+                    <Text style={styles.modalBtnPrimaryText}>Yes, Log out</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>One more step</Text>
+                <Text style={styles.modalSub}>Tap Confirm to complete logout.</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+                  <Pressable style={styles.modalBtnGray} onPress={() => setConfirmStep(false)}>
+                    <Text style={styles.modalBtnGrayText}>Back</Text>
+                  </Pressable>
+                  <Pressable style={styles.modalBtnPrimary} onPress={doLogout}>
+                    <Text style={styles.modalBtnPrimaryText}>Confirm</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
-        );
-      })()}
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PRIMARY_GREEN, paddingTop: 48 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
-  dashboardTitle: { fontSize: 26, fontWeight: '800', color: OFF_WHITE, letterSpacing: 0.5 },
-  profileButton: { padding: 5, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)' },
-  sectionWrapper: { flex: 1, paddingHorizontal: 20 },
-  section: { flex: 1 },
-  scrollContent: { paddingBottom: 30 },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: OFF_WHITE, borderRadius: 18, paddingHorizontal: 5, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 8 },
-  input: { flex: 1, paddingHorizontal: 10, paddingVertical: 12, fontSize: 16, color: PRIMARY_GREEN, fontWeight: '500' },
-  courseCard: { backgroundColor: 'rgba(250,250,250,0.95)', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 5 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  courseTitle: { fontSize: 17, fontWeight: '700', color: PRIMARY_GREEN, maxWidth: '75%' },
-  courseStatusBadge: { fontSize: 12, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1, opacity: 0.8 },
-  divider: { height: 1, backgroundColor: LIGHT_GREY, marginVertical: 8 },
-  enrollButton: { backgroundColor: PRIMARY_GREEN, paddingVertical: 8, paddingHorizontal: 18, borderRadius: 15, marginTop: 5, alignSelf: 'flex-start' },
-  enrolledButton: { backgroundColor: '#10B981' },
-  requestedButton: { backgroundColor: 'transparent', borderWidth: 2, borderColor: ACCENT_GOLD },
-  enrollText: { color: OFF_WHITE, fontWeight: '700', fontSize: 14, letterSpacing: 0.3 },
-  enrolledText: { color: OFF_WHITE },
-  requestedText: { color: ACCENT_GOLD },
-  bottomTabs: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 10, backgroundColor: PRIMARY_GREEN, borderTopColor: 'rgba(255,255,255,0.1)', borderTopWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 20 },
-  tabItem: { alignItems: 'center', padding: 5 },
-  tabText: { color: LIGHT_GREY, fontSize: 11, marginTop: 4, fontWeight: '600' },
-  tabTextActive: { color: ACCENT_GOLD, fontWeight: '700' },
-  emptyText: { color: LIGHT_GREY, textAlign: 'center', marginTop: 40, fontSize: 16, opacity: 0.8 },
-  messageBox: { position: 'absolute', bottom: 90, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.75)', padding: 12, borderRadius: 10, zIndex: 100 },
-  messageText: { color: OFF_WHITE, fontWeight: '500' },
+  screen: { flex: 1, backgroundColor: COLORS.BG, paddingTop: Platform.OS === 'android' ? 35 : 50, paddingHorizontal: 16 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  title: { fontSize: 22, color: COLORS.GOLD, fontWeight: 'bold' },
+  iconBtn: { padding: 6 },
+  tabRow: { flexDirection: 'row', marginBottom: 12 },
+  tab: { flex: 1, paddingVertical: 8, borderBottomWidth: 2, borderBottomColor: 'transparent', alignItems: 'center' },
+  tabActive: { borderBottomColor: COLORS.GOLD },
+  tabText: { color: COLORS.OFF_WHITE },
+  tabTextActive: { color: COLORS.GOLD, fontWeight: 'bold' },
+  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, marginBottom: 12 },
+  searchInput: { flex: 1, color: COLORS.OFF_WHITE, paddingVertical: 8, paddingHorizontal: 8, fontSize: 14 },
+  scrollContent: { paddingBottom: 100 },
+  emptyText: { color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 20 },
+  premiumCard: { borderRadius: 14, paddingVertical: 30, paddingHorizontal: 12 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  premiumTitle: { fontSize: 18, color: COLORS.OFF_WHITE, fontWeight: 'bold', flex: 1 },
+  premiumDesc: { color: 'rgba(255,255,255,0.7)', marginVertical: 8 }, // removed from layout but kept style
+  badge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }, // unused top badge removed in markup
+  badgeText: { fontSize: 10 },
+  innerStatsRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 6 }, // removed from layout
+  glassStat: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: 6, flex: 1, marginRight: 6 },
+  glassStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)' },
+  glassStatValue: { fontSize: 12, color: COLORS.OFF_WHITE, fontWeight: 'bold' },
+  premiumFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 30 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.ACCENT },
+  durationText: { color: COLORS.OFF_WHITE, fontSize: 12 },
+  enrollBtn: { backgroundColor: COLORS.ACCENT, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  enrollDisabled: { backgroundColor: 'rgba(20,184,166,0.5)' },
+  enrollBtnText: { color: COLORS.OFF_WHITE, fontWeight: 'bold', fontSize: 12 },
+  detailsBtn: { borderWidth: 1, borderColor: COLORS.OFF_WHITE, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  detailsBtnText: { color: COLORS.OFF_WHITE, fontWeight: 'bold', fontSize: 12 },
+  withdrawBtn: { backgroundColor: COLORS.GOLD, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  withdrawText: { color: COLORS.BG, fontWeight: 'bold', fontSize: 12 },
+  toast: { position: 'absolute', bottom: 50, alignSelf: 'center', backgroundColor: COLORS.ACCENT, padding: 10, borderRadius: 8 },
+  toastText: { color: COLORS.OFF_WHITE, fontWeight: 'bold' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalCard: { backgroundColor: COLORS.BG, padding: 20, borderRadius: 12, width: width * 0.85 },
+  modalTitle: { color: COLORS.GOLD, fontWeight: 'bold', fontSize: 18, marginBottom: 6 },
+  modalSub: { color: COLORS.OFF_WHITE, marginBottom: 6 },
+  modalBtnPrimary: { backgroundColor: COLORS.ACCENT, padding: 10, borderRadius: 8 },
+  modalBtnPrimaryText: { color: COLORS.OFF_WHITE, fontWeight: 'bold' },
+  modalBtnGray: { backgroundColor: 'rgba(255,255,255,0.1)', padding: 10, borderRadius: 8 },
+  modalBtnGrayText: { color: COLORS.OFF_WHITE, fontWeight: 'bold' },
 });
