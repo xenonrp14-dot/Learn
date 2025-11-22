@@ -3,98 +3,134 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LEARN – Connect With Mentors</title>
+  <title>LEARN – Unlock Your Potential</title>
 
   <style>
+    :root {
+      --primary: #0D9488;
+      --accent: #14B8A6;
+      --dark-bg: #0a120eff;
+      --card: #121820;
+      --text-light: #F1F5F9;
+      --text-faint: #9CA3AF;
+    }
+
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f5f7fa;
-      color: #222;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      font-family: "Inter", Arial, sans-serif;
+      background: linear-gradient(to bottom right, #000000, #0A0E12, #0F1A1F);
+      color: var(--text-light);
+      overflow-x: hidden;
+    }
+
+    /* --- STAR FIELD (Lightweight) --- */
+    .stars {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      background: url("https://i.imgur.com/3KXfF4V.png");
+      opacity: 0.28;
+      animation: moveStars 90s linear infinite;
+    }
+
+    @keyframes moveStars {
+      from { transform: translateY(0); }
+      to { transform: translateY(-800px); }
+    }
+
+    /* --- GLOW --- */
+    .glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: rgba(20, 184, 166, 0.10);
+      border-radius: 50%;
+      top: 12%;
+      left: 50%;
+      transform: translateX(-50%);
+      filter: blur(90px);
+      z-index: -1;
     }
 
     header {
-      width: 100%;
-      padding: 20px 0;
       text-align: center;
-      background: white;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-
-    .logo {
-      font-size: 28px;
-      font-weight: 700;
+      padding: 25px 0;
+      font-size: 30px;
+      font-weight: 800;
       letter-spacing: 1px;
+      color: var(--accent);
     }
 
     .container {
-      max-width: 520px;
-      margin-top: 70px;
+      max-width: 680px;
+      margin: 100px auto;
+      padding: 0 24px;
       text-align: center;
-      padding: 0 20px;
     }
 
     h1 {
-      font-size: 34px;
-      margin-bottom: 10px;
-      font-weight: 700;
+      font-size: 40px;
+      font-weight: 800;
+      margin-bottom: 12px;
     }
 
     p {
-      font-size: 18px;
-      line-height: 1.5;
-      margin-bottom: 40px;
-      color: #555;
+      font-size: 19px;
+      color: var(--text-faint);
+      line-height: 1.6;
+      margin-bottom: 45px;
     }
 
     .download-btn {
       display: inline-block;
-      padding: 15px 35px;
-      background: black;
+      padding: 16px 38px;
+      background: var(--primary);
       color: white;
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 19px;
+      font-weight: 700;
+      border-radius: 12px;
       text-decoration: none;
-      border-radius: 10px;
-      transition: 0.3s;
+      transition: 0.3s ease;
+      box-shadow: 0 0 20px rgba(13, 148, 136, 0.4);
     }
 
     .download-btn:hover {
-      background: #333;
+      background: #0b7c72;
+      box-shadow: 0 0 25px rgba(20, 184, 166, 0.55);
     }
 
     footer {
-      margin-top: 80px;
+      margin-top: 100px;
       padding: 20px;
+      text-align: center;
       font-size: 14px;
-      color: #777;
+      color: var(--text-faint);
     }
   </style>
 </head>
 
 <body>
-  <header>
-    <div class="logo">LEARN</div>
-  </header>
+  <div class="stars"></div>
+  <div class="glow"></div>
+
+  <header>LEARN</header>
 
   <div class="container">
-    <h1>Grow. Improve. Succeed.</h1>
+    <h1>Unlock Your Potential</h1>
 
     <p>
-      Enhance your skills, connect with expert mentors, and learn smarter.
-      LEARN helps you find guidance, track your progress, and level up your knowledge with ease.
+      Learn smarter, grow faster, and connect with expert mentors.
+      LEARN empowers you to track progress, stay motivated, and achieve excellence.
     </p>
 
-    <!-- Update this link later -->
-    <a href="https://expo.dev/artifacts/eas/vGUy9RSb4vBPCoYNCUYXD8.apk" class="download-btn">Download App</a>
-
+    <a href="https://expo.dev/artifacts/eas/vGUy9RSb4vBPCoYNCUYXD8.apk" class="download-btn">
+      Download App
+    </a>
   </div>
 
-  <footer>
-    © 2025 LEARN · All rights reserved
-  </footer>
+  <footer>© 2025 LEARN · All rights reserved</footer>
 </body>
 </html>
